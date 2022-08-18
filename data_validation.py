@@ -1130,13 +1130,17 @@ class DataValidationFolder:
     db: Type[DataValidationDB] = MongoDataValidationDB
     backup_paths: Set[str] = None # auto-populated with lims, npexp, sync computer folders
     include_subfolders: bool = True
+    
     regenerate_threshold_bytes: int = 1 * 1024**2 # MB 
     # - below this file size, checksums will always be generated - even if they're already in the database
     # - above this size, behavior is to get the checksum from the database if it exists for the file (size + path must
     #   be identical), otherwise generate it
+    
     min_age_days: int = 0
     # - minimum age of a file for it to be deleted (provided that a valid backup exists)
-
+    
+    filename_filter: str = ''
+    # - applied to glob search for files in the folder
     
     def __init__(self, path: str):
         """Represents a folder for which we want to checksum the contents and add to database,
@@ -1225,9 +1229,9 @@ class DataValidationFolder:
             return self._file_paths
         
         if self.include_subfolders:
-            self._file_paths = [child for child in pathlib.Path(self.path).rglob('*') if not child.is_dir()]
+            self._file_paths = [child for child in pathlib.Path(self.path).rglob('*') if not child.is_dir() and self.filename_filter in child.name]
         else:
-            self._file_paths = [child for child in pathlib.Path(self.path).iterdir() if not child.is_dir()]
+            self._file_paths = [child for child in pathlib.Path(self.path).iterdir() if not child.is_dir() and self.filename_filter in child.name]
 
         return self._file_paths
     
@@ -1451,7 +1455,9 @@ def clear_dirs():
     
     regenerate_threshold_bytes = config['options'].getint('regenerate_threshold_bytes', fallback=1024**2)
     min_age_days = config['options'].getint('min_age_days', fallback=0)
-        
+    filename_filter = config['options'].get('filename_filter', fallback='')
+    exhaustive_search = config['options'].getboolean('exhaustive_search', fallback=False)
+    
     total_deleted_bytes = [] # keep a tally of space recovered
     print('Checking:')
     pprint.pprint(dirs, indent=4, compact=False)
@@ -1467,7 +1473,7 @@ def clear_dirs():
         # F.include_subfolders = include_subfolders
         F.regenerate_threshold_bytes = regenerate_threshold_bytes
         F.min_age_days = min_age_days
-        
+        F.filename_filter = filename_filter
                 
         if F.session:
             F.add_standard_backup_paths()

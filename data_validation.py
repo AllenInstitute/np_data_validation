@@ -1444,9 +1444,10 @@ def clear_dirs():
     dirs = [pathlib.Path(d.strip()).resolve().as_posix() for d in config['options']['dirs'].split(',') if d != '']
     
     if os.getenv('AIBS_COMP_ID'):
-        # get folders for routine clearing on rig computers
+        # add folders for routine clearing on rig computers
         comp = os.getenv('AIBS_COMP_ID').split('-')[-1].lower()
-        dirs += [pathlib.Path(d.strip()).resolve().as_posix() for d in config[comp]['dirs'].split(',') if d != '']
+        if comp in config:
+            dirs += [pathlib.Path(d.strip()).resolve().as_posix() for d in config[comp]['dirs'].split(',') if d != '']
     
     if not dirs:
         return

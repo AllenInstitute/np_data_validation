@@ -949,7 +949,7 @@ class CRC32JsonDataValidationDB(DataValidationDB):
 
     path = '//allen/ai/homedirs/ben.hardcastle/crc32_data_validation_db.json'
 
-    db: List[DataValidationFile] = []
+    db: List[DataValidationFile] = None
 
     def __init__(self, path: str = None):
         if path:
@@ -960,7 +960,7 @@ class CRC32JsonDataValidationDB(DataValidationDB):
         """ load the database from disk """
 
         # persistence in notebooks causes db to grow every execution
-        if self.db:
+        if not self.db:
             self.db = []
 
         if not path:

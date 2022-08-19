@@ -1411,7 +1411,7 @@ def DVFolders_from_dirs(dirs: Union[str, List[str]]) -> Generator[DataValidation
         dirs = [dirs]
         
     def skip(dir) -> bool:
-        skip_filters = ["$RECYCLE.BIN", "_temp_"]
+        skip_filters = ["$RECYCLE.BIN", "_temp_", "#recycle"]
         if any(skip in str(dir) for skip in skip_filters):
             return True
         #* removing this condition as a test - perhaps not necessary, as long as files belong to a session

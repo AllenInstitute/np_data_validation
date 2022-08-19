@@ -1168,7 +1168,9 @@ class DataValidationFolder:
             raise ValueError(f"{self.__class__.__name__}: path must point to a folder {path}")
         else:
             self.path = pathlib.Path(path).as_posix()
-            
+
+        if not self.file_paths:
+            return None
             
     def add_backup_path(self, path: Union[str, List[str]]):
         """Store one or more paths to folders possibly containing backups for the session"""
@@ -1468,7 +1470,8 @@ def clear_dirs():
     divider = '\n' + '='*40 + '\n\n'
     
     for F in DVFolders_from_dirs(dirs):
-  
+        if not F:
+            continue
         # TODO need to be able to set include_subfolders in DVFolders_from_dirs, but also want to leave it as a config
         # option, which shoud be set here 
         # F.include_subfolders = include_subfolders

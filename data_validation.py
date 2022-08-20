@@ -1169,8 +1169,7 @@ class DataValidationFolder:
         else:
             self.path = pathlib.Path(path).as_posix()
 
-        if not self.file_paths:
-            return None
+ 
             
     def add_backup_path(self, path: Union[str, List[str]]):
         """Store one or more paths to folders possibly containing backups for the session"""

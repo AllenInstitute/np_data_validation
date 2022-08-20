@@ -167,9 +167,9 @@ def find_valid_backups(subject: dv.DataValidationFile, db: dv.DataValidationDB, 
                     candidate = generate_checksum(db.DVFile(path=try_path.as_posix()), db)
                     if (subject == candidate) in [db.DVFile.Match.VALID_COPY_RENAMED, db.DVFile.Match.VALID_COPY_SAME_NAME]:
                         backups.add(candidate)
-                        # could break here instead of checking all backup paths
-                        # but why not get as much info as possible before deleting the file
-                        continue
+                        # could continue here and check all backup paths
+                        # to get as much info as possible before deleting the file
+                        break # this just saves time
             
             # now we check for any files in the directory with the same size, since the filename may have changed
             try: 
@@ -184,9 +184,10 @@ def find_valid_backups(subject: dv.DataValidationFile, db: dv.DataValidationDB, 
                     candidate = generate_checksum(db.DVFile(path=d.path, size=subject.size), db)
                     if (subject == candidate) in [db.DVFile.Match.VALID_COPY_RENAMED, db.DVFile.Match.VALID_COPY_SAME_NAME]:
                         backups.add(candidate)
-                        # could break here instead of checking all backup paths
-                        # but why not get as much info as possible before deleting the file
-    
+                        # could continue here and check all backup paths
+                        # to get as much info as possible before deleting the file
+                        break # this just saves time 
+                    
     return list(backups) or None
     
 

@@ -949,7 +949,7 @@ class CRC32JsonDataValidationDB(DataValidationDB):
 
     path = '//allen/ai/homedirs/ben.hardcastle/crc32_data_validation_db.json'
 
-    db: List[DataValidationFile] = []
+    db: List[DataValidationFile] = None
 
     def __init__(self, path: str = None):
         if path:
@@ -960,7 +960,7 @@ class CRC32JsonDataValidationDB(DataValidationDB):
         """ load the database from disk """
 
         # persistence in notebooks causes db to grow every execution
-        if self.db:
+        if not self.db:
             self.db = []
 
         if not path:
@@ -1130,13 +1130,17 @@ class DataValidationFolder:
     db: Type[DataValidationDB] = MongoDataValidationDB
     backup_paths: Set[str] = None # auto-populated with lims, npexp, sync computer folders
     include_subfolders: bool = True
+    
     regenerate_threshold_bytes: int = 1 * 1024**2 # MB 
     # - below this file size, checksums will always be generated - even if they're already in the database
     # - above this size, behavior is to get the checksum from the database if it exists for the file (size + path must
     #   be identical), otherwise generate it
+    
     min_age_days: int = 0
     # - minimum age of a file for it to be deleted (provided that a valid backup exists)
-
+    
+    filename_filter: str = ''
+    # - applied to glob search for files in the folder
     
     def __init__(self, path: str):
         """Represents a folder for which we want to checksum the contents and add to database,
@@ -1164,7 +1168,9 @@ class DataValidationFolder:
             raise ValueError(f"{self.__class__.__name__}: path must point to a folder {path}")
         else:
             self.path = pathlib.Path(path).as_posix()
-            
+
+        if not self.file_paths:
+            return None
             
     def add_backup_path(self, path: Union[str, List[str]]):
         """Store one or more paths to folders possibly containing backups for the session"""
@@ -1225,9 +1231,9 @@ class DataValidationFolder:
             return self._file_paths
         
         if self.include_subfolders:
-            self._file_paths = [child for child in pathlib.Path(self.path).rglob('*') if not child.is_dir()]
+            self._file_paths = [child for child in pathlib.Path(self.path).rglob('*') if not child.is_dir() and self.filename_filter in child.name]
         else:
-            self._file_paths = [child for child in pathlib.Path(self.path).iterdir() if not child.is_dir()]
+            self._file_paths = [child for child in pathlib.Path(self.path).iterdir() if not child.is_dir() and self.filename_filter in child.name]
 
         return self._file_paths
     
@@ -1405,7 +1411,7 @@ def DVFolders_from_dirs(dirs: Union[str, List[str]]) -> Generator[DataValidation
         dirs = [dirs]
         
     def skip(dir) -> bool:
-        skip_filters = ["$RECYCLE.BIN", "_temp_"]
+        skip_filters = ["$RECYCLE.BIN", "_temp_", "#recycle"]
         if any(skip in str(dir) for skip in skip_filters):
             return True
         #* removing this condition as a test - perhaps not necessary, as long as files belong to a session
@@ -1440,9 +1446,10 @@ def clear_dirs():
     dirs = [pathlib.Path(d.strip()).resolve().as_posix() for d in config['options']['dirs'].split(',') if d != '']
     
     if os.getenv('AIBS_COMP_ID'):
-        # get folders for routine clearing on rig computers
+        # add folders for routine clearing on rig computers
         comp = os.getenv('AIBS_COMP_ID').split('-')[-1].lower()
-        dirs += [pathlib.Path(d.strip()).resolve().as_posix() for d in config[comp]['dirs'].split(',') if d != '']
+        if comp in config:
+            dirs += [pathlib.Path(d.strip()).resolve().as_posix() for d in config[comp]['dirs'].split(',') if d != '']
     
     if not dirs:
         return
@@ -1451,7 +1458,9 @@ def clear_dirs():
     
     regenerate_threshold_bytes = config['options'].getint('regenerate_threshold_bytes', fallback=1024**2)
     min_age_days = config['options'].getint('min_age_days', fallback=0)
-        
+    filename_filter = config['options'].get('filename_filter', fallback='')
+    exhaustive_search = config['options'].getboolean('exhaustive_search', fallback=False)
+    
     total_deleted_bytes = [] # keep a tally of space recovered
     print('Checking:')
     pprint.pprint(dirs, indent=4, compact=False)
@@ -1461,13 +1470,14 @@ def clear_dirs():
     divider = '\n' + '='*40 + '\n\n'
     
     for F in DVFolders_from_dirs(dirs):
-  
+        if not F:
+            continue
         # TODO need to be able to set include_subfolders in DVFolders_from_dirs, but also want to leave it as a config
         # option, which shoud be set here 
         # F.include_subfolders = include_subfolders
         F.regenerate_threshold_bytes = regenerate_threshold_bytes
         F.min_age_days = min_age_days
-        
+        F.filename_filter = filename_filter
                 
         if F.session:
             F.add_standard_backup_paths()

@@ -250,8 +250,8 @@ class Session:
     NPEXP_ROOT = pathlib.Path(R"//allen/programs/mindscope/workgroups/np-exp")
 
     def __init__(self, path: str):
-        if not isinstance(path, str):
-            raise TypeError(f"{self.__class__.__name__} path must be a string")
+        if not isinstance(path, (str,pathlib.Path)):
+            raise TypeError(f"{self.__class__.__name__} path must be a string or pathlib.Path object")
 
         self.folder = self.__class__.folder(path)
         # TODO maybe not do this - could be set to class without realizing - just assign for instances
@@ -261,8 +261,8 @@ class Session:
             self.id = self.folder.split('_')[0]
             self.mouse = self.folder.split('_')[1]
             self.date = self.folder.split('_')[2]
-        elif 'production' and 'prod0' in path:
-            self.id = re.search(R'(?<=_session_)\d{10}', path).group(0)
+        elif 'production' and 'prod0' in str(path):
+            self.id = re.search(R'(?<=_session_)\d{10}', str(path)).group(0)
             lims_dg = dg.lims_data_getter(self.id)
             self.mouse = lims_dg.data_dict['external_specimen_name']
             self.date = lims_dg.data_dict['datestring']
@@ -271,15 +271,15 @@ class Session:
             raise ValueError(f"{self.__class__.__name__} path must contain a valid session folder {path}")
 
     @classmethod
-    def folder(cls, path) -> Union[str, None]:
+    def folder(cls, path: Union[str, pathlib.Path]) -> Union[str, None]:
         """Extract [10-digit session ID]_[6-digit mouse ID]_[6-digit date
         str] from a file or folder path"""
 
         # identify a session based on
         # [10-digit session ID]_[6-digit mouseID]_[6-digit date str]
-        session_reg_exp = "[0-9]{10}_[0-9]{6}_[0-9]{8}"
+        session_reg_exp = R"[0-9]{8,}_[0-9]{6}_[0-9]{8}"
 
-        session_folders = re.findall(session_reg_exp, path)
+        session_folders = re.findall(session_reg_exp, str(path))
         if session_folders:
             if not all(s == session_folders[0] for s in session_folders):
                 logging.warning(f"{cls.__class__.__name__} Mismatch between session folder strings - file may be in the wrong folder: {path}")
@@ -324,16 +324,15 @@ class SessionFile:
 
     session = None
 
-    def __init__(self, path: str):
+    def __init__(self, path: Union[str, pathlib.Path]):
         """ from the complete file path we can extract some information upon
         initialization """
 
         if not isinstance(path, (str, pathlib.Path)):
-            raise TypeError(f"{self.__class__.__name__}: path must be a str pointing to a file: {type(path)}")
-        if isinstance(path, pathlib.Path):
-            path = str(path)
+            raise TypeError(f"{self.__class__.__name__}: path must be a str or pathlib.Path pointing to a file: {type(path)}")
 
-        self.accessible = os.path.exists(path)
+
+        self.accessible = path.exists()
         # ensure the path is a file, not directory
         # if the file doesn't exist, we have to assume based on lack of file extension
         if not self.accessible:
@@ -342,7 +341,7 @@ class SessionFile:
             else:
                 is_file = True
         else:
-            is_file = os.path.isfile(path)
+            is_file = path.is_file()
 
         if not is_file:
             # TODO some files show accessible=True but at this point don't exist here - presumably deleted
@@ -350,15 +349,15 @@ class SessionFile:
         else:
             self.path = path
 
-        self.name = os.path.basename(self.path)
+        self.name = self.path.name
 
         # get the name of the folder the file lives in (which may be the same as self.root_path below)
-        self.parent = pathlib.Path(os.path.dirname(self.path)).parts[-1]
+        self.parent = self.path.parent
 
         # extract the session ID from anywhere in the path
         self.session = Session(self.path)
         if not self.session:
-            raise ValueError(f"{self.__class__.__name__}: path does not contain a session ID {path}")
+            raise ValueError(f"{self.__class__.__name__}: path does not contain a session ID {self.path.as_posix}")
     
     @property
     def root_path(self) -> str:
@@ -374,7 +373,7 @@ class SessionFile:
         else:
             raise ValueError(f"{self.__class__.__name__}: session_folder not found in path {self.path}")
         
-        return self.path.split(str(parts[0]))[0]
+        return self.path.as_posix().split(str(parts[0]))[0]
 
 
     @property
@@ -389,7 +388,8 @@ class SessionFile:
         # assorted files from multiple sessions in a single folder (e.g. LIMS incoming),
         # or a folder which has the session_folder pattern plus extra info
         # appended, eg. _probeABC
-        return None
+        # in that case return the root path
+        return self.root_path
     
     
     @property
@@ -433,7 +433,7 @@ class SessionFile:
     def get_z_drive_path(self) -> pathlib.Path:
         """Path to possible backup on 'z' drive (might not exist)"""
         running_on_rig = nptk.COMP_ID if "NP." in nptk.COMP_ID else None
-        local_path = self.path[0] not in ["/", "\\"]
+        local_path = str(self.path)[0] not in ["/", "\\"]
         rig_from_path = nptk.Rig.rig_from_path(self.path) 
         
         # get the sync computer's path 

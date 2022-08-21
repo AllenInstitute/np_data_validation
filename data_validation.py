@@ -331,6 +331,7 @@ class SessionFile:
         if not isinstance(path, (str, pathlib.Path)):
             raise TypeError(f"{self.__class__.__name__}: path must be a str or pathlib.Path pointing to a file: {type(path)}")
 
+        path = pathlib.Path(path)
 
         self.accessible = path.exists()
         # ensure the path is a file, not directory

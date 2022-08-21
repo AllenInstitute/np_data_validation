@@ -131,11 +131,17 @@ import nptk  # utilities for np rigs and data
 import strategies  # for interacting with database
 
 # LOG_DIR = fR"//allen/programs/mindscope/workgroups/np-exp/ben/data_validation/logs/"
-logging.basicConfig(format="%(asctime)s %(levelname)s %(message)s", level=logging.DEBUG,datefmt="%Y-%m-%d %H:%M")
 log = logging.getLogger()
-logHandler = logging.handlers.RotatingFileHandler('data_validation2.log', maxBytes=10000, backupCount=10)
+pathlib.Path('./logs').mkdir(parents=True, exist_ok=True)
+logHandler = logging.handlers.RotatingFileHandler(
+    './logs/clear_dirs.log', 
+    maxBytes=10000, 
+    backupCount=10,
+    )
+logHandler.formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s",datefmt="%Y-%m-%d %H:%M")
 log.addHandler(logHandler)
 log.setLevel(logging.ERROR)
+
 
 
 def error(e: TypeError) -> str:

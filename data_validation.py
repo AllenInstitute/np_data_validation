@@ -333,7 +333,7 @@ class SessionFile:
         
         path = pathlib.Path(path)
 
-        self.accessible = path.exists()
+        self.accessible = os.path.exists(path) #pathlib exists() can give user name/pwd incorrect error
         # ensure the path is a file, not directory
         # if the file doesn't exist, we have to assume based on lack of file extension
         if not self.accessible:

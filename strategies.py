@@ -151,12 +151,14 @@ def find_valid_backups(subject: dv.DataValidationFile, db: dv.DataValidationDB, 
     
     backups = set()
     if matches:
-        
         for match in matches:
             for backup_path in backup_paths:
-                if match.path.startswith(backup_path):
+                if match.path.startswith(backup_path) \
+                    and os.path.exists(match.path):
                     backups.add(match)
-        
+                else:
+                    dv.logging.info(f"Valid copy - inaccessible or not in a specified backup path: {match.path}")
+    
     if not backups:
         for backup_path in backup_paths:
             try_backup = pathlib.Path(backup_path)
@@ -170,7 +172,7 @@ def find_valid_backups(subject: dv.DataValidationFile, db: dv.DataValidationDB, 
                         # could continue here and check all backup paths
                         # to get as much info as possible before deleting the file
                         break # this just saves time
-            
+                    
             # now we check for any files in the directory with the same size, since the filename may have changed
             try: 
                 dir_contents = os.scandir(backup_path)

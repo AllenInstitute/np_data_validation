@@ -131,11 +131,11 @@ import nptk  # utilities for np rigs and data
 import strategies  # for interacting with database
 
 # LOG_DIR = fR"//allen/programs/mindscope/workgroups/np-exp/ben/data_validation/logs/"
-logging.basicConfig(format="%(asctime)s %(levelname)s %(message)s", filename="data_validation.log", level=logging.DEBUG,datefmt="%Y-%m-%d %H:%M")
-log = logging.getLogger(__name__)
-logHandler = logging.handlers.RotatingFileHandler('data_validation.log', maxBytes=10000, backupCount=5)
+logging.basicConfig(format="%(asctime)s %(levelname)s %(message)s", level=logging.DEBUG,datefmt="%Y-%m-%d %H:%M")
+log = logging.getLogger()
+logHandler = logging.handlers.RotatingFileHandler('data_validation2.log', maxBytes=10000, backupCount=10)
 log.addHandler(logHandler)
-log.setLevel(logging.INFO)
+log.setLevel(logging.ERROR)
 
 
 def error(e: TypeError) -> str:
@@ -282,7 +282,7 @@ class Session:
         session_folders = re.findall(session_reg_exp, str(path))
         if session_folders:
             if not all(s == session_folders[0] for s in session_folders):
-                logging.warning(f"{cls.__class__.__name__} Mismatch between session folder strings - file may be in the wrong folder: {path}")
+                logging.info(f"{cls.__class__.__name__} Mismatch between session folder strings - file may be in the wrong folder: {path}")
             return session_folders[0]
         else:
             return None
@@ -535,9 +535,9 @@ class DataValidationFile(abc.ABC):
                 # convert single-digit probe numbers to letters 
                 if ord('0') <= ord(probe_name) <= ord('5'):
                     probe_name = chr(ord('A') + int(probe_name))
-                assert ord('A') <= ord(probe_name) <= ord('F'), logging.ERROR("{} is not a valid probe name: must include a single digit [0-5], or some combination of capital letters [A-F]".format(probe_name))
+                assert ord('A') <= ord(probe_name) <= ord('F'), logging.error("{} is not a valid probe name: must include a single digit [0-5], or some combination of capital letters [A-F]".format(probe_name))
             else:
-                assert all(letter in "ABCDEF" for letter in probe_name), logging.ERROR("{} is not a valid probe name: must include a single digit [0-5], or some combination of capital letters [A-F]".format(probe_name))
+                assert all(letter in "ABCDEF" for letter in probe_name), logging.error("{} is not a valid probe name: must include a single digit [0-5], or some combination of capital letters [A-F]".format(probe_name))
         self.probe_dir = probe_name if probe else None
         
         if path and not size and self.accessible: # TODO replace exists check, race condition
@@ -1297,7 +1297,7 @@ class DataValidationFolder:
             if int(file.session.date) \
             > int((datetime.datetime.now() - datetime.timedelta(days=self.min_age_days)).strftime('%Y%m%d')) \
                 :
-                logging.debug(f'skipping file less than {self.min_age_days} days old: {file.session.date}')   
+                logging.info(f'skipping file less than {self.min_age_days} days old: {file.session.date}')   
                 continue
             
             threads[i] = threading.Thread(target=delete_if_valid_backup_in_db, args=(deleted_bytes, i, file, self.db, self.backup_paths))
@@ -1311,7 +1311,7 @@ class DataValidationFolder:
         for check_dir in check_dir_paths:
             try:
                 os.rmdir(check_dir[0]) # raises error if not empty
-                logging.debug(f"{self.__class__.__name__}: removed empty folder {check_dir[0]}")
+                logging.info(f"{self.__class__.__name__}: removed empty folder {check_dir[0]}")
             except OSError:
                 continue
         

@@ -1224,7 +1224,10 @@ class DataValidationFolder:
             if z_drive:
                 self.add_backup_path(z_drive)
             
+    @property
     def filename_filters(self):
+        return self.filename_filter.replace('*', '').replace(' ', '').strip().split('|')
+
     @property
     def file_paths(self) -> List[pathlib.Path]:
         """return a list of files in the folder"""
@@ -1232,9 +1235,17 @@ class DataValidationFolder:
             return self._file_paths
         
         if self.include_subfolders:
+            #! yield from needs testing plus modifying the 'backup_paths' code above
             # for now, this will return the full list each time and be slower
+            self._file_paths = [
+                child for child in pathlib.Path(self.path).rglob('*')
+                if not child.is_dir() and any(filters in child.name for filters in self.filename_filters)
+            ]
         else:
             self._file_paths = [
+                child for child in pathlib.Path(self.path).iterdir()
+                if not child.is_dir() and any(filters in child.name for filters in self.filename_filters)
+            ]
         return self._file_paths
     
     

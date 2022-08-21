@@ -330,7 +330,7 @@ class SessionFile:
 
         if not isinstance(path, (str, pathlib.Path)):
             raise TypeError(f"{self.__class__.__name__}: path must be a str or pathlib.Path pointing to a file: {type(path)}")
-
+        
         path = pathlib.Path(path)
 
         self.accessible = path.exists()
@@ -1233,7 +1233,7 @@ class DataValidationFolder:
         """return a list of files in the folder"""
         if hasattr(self, '_file_paths') and self._file_paths:
             return self._file_paths
-        
+
         if self.include_subfolders:
             #! yield from needs testing plus modifying the 'backup_paths' code above
             # for now, this will return the full list each time and be slower
@@ -1416,7 +1416,7 @@ def report_multline_print(file: DataValidationFile, comparisons: List[DataValida
     logging.info("#" * column_width)
 
 
-def DVFolders_from_dirs(dirs: Union[str, List[str]]) -> Generator[DataValidationFolder, None, None]:
+def DVFolders_from_dirs(dirs: Union[str, List[str]], only_session_folders=True) -> Generator[DataValidationFolder, None, None]:
     """Generator of DataValidationFolder objects from a list of directories"""
     if not isinstance(dirs, list):
         dirs = [dirs]
@@ -1425,9 +1425,6 @@ def DVFolders_from_dirs(dirs: Union[str, List[str]]) -> Generator[DataValidation
         skip_filters = ["$RECYCLE.BIN", "_temp_", "#recycle"]
         if any(skip in str(dir) for skip in skip_filters):
             return True
-        #* removing this condition as a test - perhaps not necessary, as long as files belong to a session
-        # if not Session.folder(str(dir)):
-        #     return True
         
     for dir in dirs:
         dir_path = pathlib.Path(dir)
@@ -1445,7 +1442,7 @@ def DVFolders_from_dirs(dirs: Union[str, List[str]]) -> Generator[DataValidation
             yield top_level_dir
              
             for c in [child for child in dir_path.iterdir() if child.is_dir()]:
-                if skip(c):
+                if skip(c) or (only_session_folders and not Session.folder(str(c))):
                     continue
                 else:
                     yield DataValidationFolder(c.as_posix())
@@ -1465,11 +1462,10 @@ def clear_dirs():
     if not dirs:
         return
     
-    include_subfolders = config['options'].getboolean('include_subfolders', fallback=True)
-    
     regenerate_threshold_bytes = config['options'].getint('regenerate_threshold_bytes', fallback=1024**2)
     min_age_days = config['options'].getint('min_age_days', fallback=0)
     filename_filter = config['options'].get('filename_filter', fallback='')
+    only_session_folders = config['options'].getboolean('only_session_folders', fallback=True)
     exhaustive_search = config['options'].getboolean('exhaustive_search', fallback=False)
     
     total_deleted_bytes = [] # keep a tally of space recovered
@@ -1480,15 +1476,14 @@ def clear_dirs():
     
     divider = '\n' + '='*40 + '\n\n'
     
-    for F in DVFolders_from_dirs(dirs):
-        if not F or not F.file_paths:
+    for F in DVFolders_from_dirs(dirs, only_session_folders):
+        if not F:
             continue
-        # TODO need to be able to set include_subfolders in DVFolders_from_dirs, but also want to leave it as a config
-        # option, which shoud be set here 
-        # F.include_subfolders = include_subfolders
         F.regenerate_threshold_bytes = regenerate_threshold_bytes
         F.min_age_days = min_age_days
         F.filename_filter = filename_filter
+        if not F.file_paths:
+            continue
                 
         if F.session:
             F.add_standard_backup_paths()

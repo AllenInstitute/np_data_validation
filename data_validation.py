@@ -373,8 +373,8 @@ class SessionFile:
             parts = parts[1:]
         else:
             raise ValueError(f"{self.__class__.__name__}: session_folder not found in path {self.path}")
-        
-        return self.path.as_posix().split(str(parts[0]))[0]
+
+        return pathlib.Path(str(self.path).split(str(parts[0]))[0])
 
 
     @property
@@ -382,7 +382,7 @@ class SessionFile:
         """path to the session folder, if it exists"""
         
         # if a repository (eg npexp) contains session folders, the following location should exist:
-        session_folder_path = os.path.join(self.root_path, self.session.folder)
+        session_folder_path = self.root_path / self.session.folder
         if os.path.exists(session_folder_path):
             return session_folder_path
         # but it might not exist: we could have a file sitting in a folder with a flat structure:

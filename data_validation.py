@@ -1469,7 +1469,7 @@ def clear_dirs():
     divider = '\n' + '='*40 + '\n\n'
     
     for F in DVFolders_from_dirs(dirs):
-        if not F:
+        if not F or not F.file_paths:
             continue
         # TODO need to be able to set include_subfolders in DVFolders_from_dirs, but also want to leave it as a config
         # option, which shoud be set here 

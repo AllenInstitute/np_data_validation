@@ -333,19 +333,21 @@ class SessionFile:
         
         path = pathlib.Path(path)
 
-        self.accessible = os.path.exists(path) #pathlib exists() can give user name/pwd incorrect error
         # ensure the path is a file, not directory
-        # if the file doesn't exist, we have to assume based on lack of file extension
-        if not self.accessible:
-            if os.path.splitext(path)[1] == '':
-                is_file = False
-            else:
-                is_file = True
-        else:
-            is_file = path.is_file()
-
+        # ideally we would check the path on disk with pathlib.Path.is_file(), but that only works if the file exists
+        # we also can't assume that a file that exists one moment will still exist the next
+        # (threaded operations, deleting files etc) - so no 'if exists, .is_file()?'
+        # we'll try using the suffix/extension first, but be aware that sorted probe folders named 'Neuropix-PXI-100.1' 
+        # will give a non-empty suffix here - probably safe to assume that a numeric suffix is never an actual file
+        is_file = (path.suffix != '')
+        is_file = False if path.suffix.isdecimal() else is_file
+        try:
+            is_file = True if path.is_file() else is_file
+            # is_file() returns false if file doesn't exist so only change it if it exists
+        except:
+            pass
+    
         if not is_file:
-            # TODO some files show accessible=True but at this point don't exist here - presumably deleted
             raise ValueError(f"{self.__class__.__name__}: path must point to a file {path}")
         else:
             self.path = path
@@ -502,27 +504,36 @@ class DataValidationFile(abc.ABC):
         if path and not isinstance(path, str):
             raise TypeError(f"{self.__class__.__name__}: path must be a str pointing to a file: {type(path)}")
 
-        self.accessible = os.path.exists(path)
+        path = pathlib.Path(path)
+
         # ensure the path is a file, not directory
-        # if the file doesn't exist, we have to assume based on lack of file extension
-        if not self.accessible:
-            if os.path.splitext(path)[1] == '':
-                is_file = False
-            else:
-                is_file = True
-        else:
-            is_file = os.path.isfile(path)
+        # ideally we would check the path on disk with pathlib.Path.is_file(), but that only works if the file exists
+        # we also can't assume that a file that exists one moment will still exist the next
+        # (threaded operations, deleting files etc) - so no 'if exists, .is_file()?'
+        # we'll try using the suffix/extension first, but be aware that sorted probe folders named 'Neuropix-PXI-100.1' 
+        # will give a non-empty suffix here - probably safe to assume that a numeric suffix is never an actual file
+        is_file = (path.suffix != '')
+        is_file = False if path.suffix.isdecimal() else is_file
+        try:
+            is_file = True if path.is_file() else is_file
+            # is_file() returns false if file doesn't exist so only change it if it exists
+        except:
+            pass
 
         if not is_file:
             raise ValueError(f"{self.__class__.__name__}: path must point to a file {path}")
-        else:
-            self.path = pathlib.Path(path).as_posix()
+        
+        self.name = path.name
+        
+        # TODO switch to pathlib representation for path
+        # TODO consolidate file (vs dir) assertion with SessionFile: currently running this twice
+        # TODO freeze path, size, checksum attribs
+        self.path = pathlib.Path(path).as_posix()
 
         # we have a mix in the databases of posix paths with and without the double fwd slash
         if self.path[0] == '/' and self.path[1] != '/':
             self.path = '/' + self.path
             
-        self.name = os.path.basename(self.path)
         
         # if a file lives in a probe folder (_probeA, or _probeABC) it may have the same name, size (and even checksum) as
         # another file in a corresponding folder (_probeB, or _probeDEF) - the data are identical if all the above
@@ -540,15 +551,18 @@ class DataValidationFile(abc.ABC):
                 assert all(letter in "ABCDEF" for letter in probe_name), logging.error("{} is not a valid probe name: must include a single digit [0-5], or some combination of capital letters [A-F]".format(probe_name))
         self.probe_dir = probe_name if probe else None
         
-        if path and not size and self.accessible: # TODO replace exists check, race condition
-            self.size = os.path.getsize(path)
-        elif size and isinstance(size, int):
-            self.size = size
-        elif size and not isinstance(size, int):
-            raise ValueError(f"{self.__class__.__name__}: size must be an integer {size}")
-        else:
-            self.size = None
-
+        if path and not size: 
+            try:
+                size = os.path.getsize(path)
+            except:
+                pass
+        if size and not isinstance(size, int):
+            if isinstance(size, str) and size.isdecimal():
+                size = int(size)
+            else:
+                raise ValueError(f"{self.__class__.__name__}: size must be an integer {size}")
+        self.size = size
+        
         if checksum:
             self.checksum = checksum
 
@@ -734,8 +748,6 @@ class CRC32DataValidationFile(DataValidationFile, SessionFile):
         # try:
         SessionFile.__init__(self, path)
         DataValidationFile.__init__(self, path=path, checksum=checksum, size=size)
-        # if not hasattr(self, "accessible"):
-        #     self.accessible = os.path.exists(self.path)
 
 
 class DataValidationDB(abc.ABC):
@@ -1153,21 +1165,13 @@ class DataValidationFolder:
             self.session = Session(path)
         except:
             self.session = None
-            
+        
         # ensure the path is a directory, not a file
-        # if the file doesn't exist, we have to assume based on lack of file extension
-        self.accessible = os.path.exists(path)
-        if not self.accessible:
-            if os.path.splitext(path)[1] == '':
-                is_file = False
-            else:
-                is_file = True
-        else:
-            is_file = os.path.isfile(path)
-
-        if is_file:
+        # piggy back off the SessionFile class to do file check
+        try:
+            SessionFile(path)
             raise ValueError(f"{self.__class__.__name__}: path must point to a folder {path}")
-        else:
+        except ValueError: # TODO make a file_vs_folder function with its own exception
             self.path = pathlib.Path(path).as_posix()
 
  
@@ -1279,6 +1283,7 @@ class DataValidationFolder:
         """Clear the folder of files which are backed-up on LIMS or np-exp, or any added backup paths""" 
     
         def delete_if_valid_backup_in_db(result, idx, file_inst, db, backup_paths):
+            
             files_bytes = strategies.delete_if_valid_backup_in_db(file_inst, db, backup_paths)
             result[idx] = files_bytes
              

@@ -502,13 +502,13 @@ class DataValidationFile(abc.ABC):
     # a function that accepts a string and confirms it conforms to the checksum
     # format, return True or False
 
-    def __init__(self, path: str = None, checksum: str = None, size: int = None):
+    def __init__(self, path: Union[str,pathlib.Path] = None, checksum: str = None, size: int = None):
         """ setup depending on the inputs """
 
-        if not (path or checksum):
+        if not (path):
             raise ValueError(f"{self.__class__.__name__}: either path or checksum must be set")
 
-        if path and not isinstance(path, str):
+        if path and not isinstance(path, (str,pathlib.Path)):
             raise TypeError(f"{self.__class__.__name__}: path must be a str pointing to a file: {type(path)}")
 
         path = pathlib.Path(path)

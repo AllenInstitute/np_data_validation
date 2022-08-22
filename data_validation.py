@@ -104,6 +104,7 @@ import abc
 import configparser
 import datetime
 import enum
+import itertools
 import json
 import logging
 import logging.handlers
@@ -1318,7 +1319,11 @@ class DataValidationFolder:
             thread.join() if thread else None
         
         # tidy up empty subfolders:
-        check_dir_paths = os.walk(self.path, topdown=False, followlinks=False)
+        if self.include_subfolders:
+            check_dir_paths = os.walk(self.path, topdown=False, followlinks=False)
+        else:
+            check_dir_paths = [d for d in pathlib.Path(self.path).iterdir() if d.is_dir()] 
+        check_dir_paths = itertools.chain(check_dir_paths, self.path)
         for check_dir in check_dir_paths:
             try:
                 os.rmdir(check_dir[0]) # raises error if not empty

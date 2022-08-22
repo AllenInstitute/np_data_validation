@@ -106,12 +106,12 @@ def delete_if_valid_backup_in_db(subject: dv.DataValidationFile, db: dv.DataVali
                 (subject.session.npexp_path and any(s for s in subject.session.npexp_path.glob('*_sorted*')))
                 or (subject.session.lims_path and any(s for s in subject.session.lims_path.glob('*_sorted*')))
             ):
-            dv.logging.info(f"Skipped deletion of raw probe data on Acq: no sorted folders on npexp or lims yet {subject.session.folder} ")
+            dv.logging.debug(f"Skipped deletion of raw probe data on Acq: no sorted folders on npexp or lims yet {subject.session.folder} ")
             return 0
             
         try:
             subject.path.unlink()
-            dv.logging.critical(f"DELETED {subject.path.as_posix()}")
+            dv.logging.info(f"DELETED {subject.path.as_posix()}")
             
             return subject.size
         
@@ -143,9 +143,8 @@ def find_valid_backups(subject: dv.DataValidationFile, db: dv.DataValidationDB, 
     
     invalid_backups = find_invalid_copies_in_db(subject, db)
     
-    #* disabling this as the info is not currently useful
-    # if invalid_backups:
-    #     subject.report(invalid_backups)
+    if invalid_backups and any(ext in invalid_backups[0].path.as_posix() for ext in ['.npx2','.dat']):
+        subject.report(invalid_backups)
     
     matches = find_valid_copies_in_db(subject, db)
     
@@ -157,7 +156,7 @@ def find_valid_backups(subject: dv.DataValidationFile, db: dv.DataValidationDB, 
                     and os.path.exists(match.path.as_posix()):
                     backups.add(match)
                 else:
-                    dv.logging.info(f"Valid copy - inaccessible or not in a specified backup path: {match.path.as_posix()}")
+                    dv.logging.debug(f"Valid copy - inaccessible or not in a specified backup path: {match.path.as_posix()}")
     
     if not backups:
         for backup_path in backup_paths:

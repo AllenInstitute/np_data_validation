@@ -141,7 +141,7 @@ logHandler = logging.handlers.RotatingFileHandler(
     )
 logHandler.formatter = logging.Formatter("%(asctime)s %(message)s",datefmt="%Y-%m-%d %H:%M")
 log.addHandler(logHandler)
-log.setLevel(logging.ERROR)
+log.setLevel(logging.INFO) # may be overwritten elsewhere
 
 
 
@@ -289,7 +289,7 @@ class Session:
         session_folders = re.findall(session_reg_exp, str(path))
         if session_folders:
             if not all(s == session_folders[0] for s in session_folders):
-                logging.info(f"{cls.__class__.__name__} Mismatch between session folder strings - file may be in the wrong folder: {path}")
+                logging.debug(f"{cls.__class__.__name__} Mismatch between session folder strings - file may be in the wrong folder: {path}")
             return session_folders[0]
         else:
             return None
@@ -632,7 +632,7 @@ class DataValidationFile(abc.ABC):
                 self.report(others)
         else:
             result = self.Match(self==other).name
-            logging.critical(f"{result} | {self.path.as_posix()} {other.path} | {self.checksum} {other.checksum} | {self.size} {other.size} bytes")
+            logging.info(f"{result} | {self.path.as_posix()} {other.path} | {self.checksum} {other.checksum} | {self.size} {other.size} bytes")
     
     def __repr__(self):
         return f"(path='{self.path.as_posix() or ''}', checksum='{self.checksum or ''}', size={self.size or ''})"
@@ -931,7 +931,7 @@ class MongoDataValidationDB(DataValidationDB):
             "size": file.size,
             "type": file.checksum_name,
         })
-        logging.info(f'added {file.session.folder}/{file.name} to Mongo database')
+        logging.debug(f'added {file.session.folder}/{file.name} to Mongo database')
 
     @classmethod
     def get_matches(cls,
@@ -1296,7 +1296,7 @@ class DataValidationFolder:
             try:
                 file = self.db.DVFile(path=path.as_posix())
             except (ValueError, TypeError):
-                logging.info(f"{self.__class__.__name__}: could not add to database, likely missing session ID: {path.as_posix()}")
+                logging.debug(f"{self.__class__.__name__}: could not add to database, likely missing session ID: {path.as_posix()}")
                 continue
             
             if file.size <= self.regenerate_threshold_bytes:
@@ -1330,13 +1330,13 @@ class DataValidationFolder:
             try:
                 file = self.db.DVFile(path=path.as_posix())
             except (ValueError, TypeError):
-                logging.info(f"{self.__class__.__name__}: could not add to database, likely missing session ID: {path.as_posix()}")
+                logging.debug(f"{self.__class__.__name__}: could not add to database, likely missing session ID: {path.as_posix()}")
                 continue
             
             if int(file.session.date) \
             > int((datetime.datetime.now() - datetime.timedelta(days=self.min_age_days)).strftime('%Y%m%d')) \
                 :
-                logging.info(f'skipping file less than {self.min_age_days} days old: {file.session.date}')   
+                logging.debug(f'skipping file less than {self.min_age_days} days old: {file.session.date}')   
                 continue
             
             threads[i] = threading.Thread(target=delete_if_valid_backup_in_db, args=(deleted_bytes, i, file, self.db, self.backup_paths))
@@ -1356,7 +1356,7 @@ class DataValidationFolder:
             check_dir = pathlib.Path(check_dir[0]) if self.include_subfolders else check_dir
             try:
                 check_dir.rmdir() # raises error if not empty
-                logging.info(f"{self.__class__.__name__}: removed empty folder {check_dir}")
+                logging.debug(f"{self.__class__.__name__}: removed empty folder {check_dir}")
             except OSError:
                 continue
         
@@ -1365,7 +1365,7 @@ class DataValidationFolder:
         print(f"{len(deleted_bytes)} files deleted | {sum(deleted_bytes) / 1024**3 :.1f} GB recovered")
         # TODO add number of files deleted / total files on disk
         if deleted_bytes:
-            logging.critical(f"{len(deleted_bytes)} files deleted from {self.path} | {sum(deleted_bytes) / 1024**3 :.1f} GB recovered")
+            logging.info(f"{len(deleted_bytes)} files deleted from {self.path} | {sum(deleted_bytes) / 1024**3 :.1f} GB recovered")
         return deleted_bytes
 
 
@@ -1436,32 +1436,32 @@ def report_multline_print(file: DataValidationFile, comparisons: List[DataValida
         disp = f"{label} : {display_name(DVFile)} | {DVFile.checksum or '  none  '} | {DVFile.size or '??'} bytes"
         return disp
 
-    logging.info("#" * column_width)
-    logging.info("\n")
-    logging.info(f"subject: {file.path.as_posix()}")
-    logging.info("\n")
-    logging.info("-" * column_width)
+    logging.debug("#" * column_width)
+    logging.debug("\n")
+    logging.debug(f"subject: {file.path.as_posix()}")
+    logging.debug("\n")
+    logging.debug("-" * column_width)
 
     folder = file.path.split(file.name)[0]
     compare_folder = ""
     for other in comparisons:
-        # logging.info new header for each comparison with a new folder
+        # logging.debug new header for each comparison with a new folder
         if compare_folder != other.path.split(other.name)[0]:
             compare_folder = other.path.split(other.name)[0]
-            # logging.info("*" * column_width)
-            logging.info("folder comparison for")
-            logging.info(f"subject : {folder}")
-            logging.info(f"other   : {compare_folder}")
-            # logging.info("*" * column_width)
-            logging.info("-" * column_width)
+            # logging.debug("*" * column_width)
+            logging.debug("folder comparison for")
+            logging.debug(f"subject : {folder}")
+            logging.debug(f"other   : {compare_folder}")
+            # logging.debug("*" * column_width)
+            logging.debug("-" * column_width)
 
-        logging.info(f"Result  : {file.Match(file==other).name}")
-        logging.info(display_str("subject", file))
-        logging.info(display_str("other  ", other))
-        logging.info("-" * column_width)
+        logging.debug(f"Result  : {file.Match(file==other).name}")
+        logging.debug(display_str("subject", file))
+        logging.debug(display_str("other  ", other))
+        logging.debug("-" * column_width)
 
-    logging.info("\n")
-    logging.info("#" * column_width)
+    logging.debug("\n")
+    logging.debug("#" * column_width)
 
 
 def DVFolders_from_dirs(dirs: Union[str, List[str]], only_session_folders=True) -> Generator[DataValidationFolder, None, None]:
@@ -1515,6 +1515,7 @@ def clear_dirs():
     filename_filter = config['options'].get('filename_filter', fallback='')
     only_session_folders = config['options'].getboolean('only_session_folders', fallback=True)
     exhaustive_search = config['options'].getboolean('exhaustive_search', fallback=False)
+    logging.getLogger().setLevel(config['options'].getint('regenerate_threshold_bytes', fallback=20))
     
     total_deleted_bytes = [] # keep a tally of space recovered
     print('Checking:')
@@ -1544,7 +1545,7 @@ def clear_dirs():
         
         total_deleted_bytes += deleted_bytes 
         
-    logging.critical(f"{divider}Finished clearing.\n{len(total_deleted_bytes)} files deleted | {sum(total_deleted_bytes) / 1024**3 :.1f} GB recovered\n")
+    logging.info(f"{divider}Finished clearing.\n{len(total_deleted_bytes)} files deleted | {sum(total_deleted_bytes) / 1024**3 :.1f} GB recovered\n")
     
     
 if __name__ == "__main__":

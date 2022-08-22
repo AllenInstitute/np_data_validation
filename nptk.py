@@ -2,7 +2,7 @@ import os
 import platform
 import re
 from enum import Enum
-from typing import List, Literal, Union
+from typing import List, Union
 
 import requests
 
@@ -60,11 +60,9 @@ class Rig(Enum):
         while not RIG_ID:
             
             # extract RIG_ID from COMP_ID if possible
-            if "NP." in COMP_ID:
-                str_match = re.search(R"NP.[\d]+", COMP_ID)
-                if str_match:
-                    RIG_ID = str_match[0]
-                    break
+            RIG_ID = cls.rig_str_to_int(COMP_ID)
+            if RIG_ID:
+                break
             
             # use BTVTest.1 if allowed
             # set with environ var:
@@ -125,16 +123,22 @@ class Rig(Enum):
         """All computers on all np rigs, or those specified"""
         return ConfigHTTP.get_np_computers(rigs)
     
-    
     @staticmethod
     def rig_from_path(path):
         for idx, rig in enumerate(["NP.0", "NP.1", "NP.2"]):
             for comp in Rig.all_comps(idx).values():
                 if comp in path:
                     return rig
-        else:
-            return None
-    
+        return None
+        
+    @staticmethod
+    def rig_str_to_int(rig:str) -> Union[int,None]:
+        # extract RIG_ID from str if possible
+        str_match = re.search(R"NP.[\d]+", rig)
+        if str_match:
+            return str_match[0]
+        return None
+        
     
 class ConfigHTTP:
     

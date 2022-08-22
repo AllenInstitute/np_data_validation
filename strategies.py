@@ -14,8 +14,8 @@ def generate_checksum(subject: dv.DataValidationFile, db: dv.DataValidationDB) -
     """
     Generate a checksum for a file and add to database.
     """
-    checksum = subject.generate_checksum(subject.path, subject.size)
-    new_file = db.DVFile(path=subject.path, size=subject.size, checksum=checksum)
+    checksum = subject.generate_checksum(subject.path.as_posix(), subject.size)
+    new_file = db.DVFile(path=subject.path.as_posix(), size=subject.size, checksum=checksum)
     db.add_file(new_file)
     return new_file
 
@@ -100,7 +100,7 @@ def delete_if_valid_backup_in_db(subject: dv.DataValidationFile, db: dv.DataVali
             raise AssertionError(f"Not a valid backup, something has gone wrong: {subject} {backups[0]}")
         
         # currently, we don't want to delete raw data on A/B drives before the sorted data make it to npexp
-        if (subject.path.startswith("A:") or subject.path.startswith("B:")) \
+        if (subject.path.as_posix().startswith("A:") or subject.path.as_posix().startswith("B:")) \
             and subject.probe_dir and subject.probe_dir in ["ABC", "DEF"] \
             and not (
                 (subject.session.npexp_path and any(s for s in subject.session.npexp_path.glob('*_sorted*')))
@@ -110,13 +110,13 @@ def delete_if_valid_backup_in_db(subject: dv.DataValidationFile, db: dv.DataVali
             return 0
             
         try:
-            pathlib.Path(subject.path).unlink()
-            dv.logging.critical(f"DELETED {subject.path}")
+            subject.path.unlink()
+            dv.logging.critical(f"DELETED {subject.path.as_posix()}")
             
             return subject.size
         
         except PermissionError:
-            dv.logging.exception(f"Permission denied: could not delete {subject.path}")
+            dv.logging.exception(f"Permission denied: could not delete {subject.path.as_uri()}")
             
     return 0
 
@@ -124,12 +124,12 @@ def delete_if_valid_backup_in_db(subject: dv.DataValidationFile, db: dv.DataVali
 def find_valid_backups(subject: dv.DataValidationFile, db: dv.DataValidationDB, backup_paths: Union[List[str], Set[str], List[pathlib.Path]] = None) -> List[dv.DataValidationFile]:
     if not backup_paths:
         backup_paths = set()
-        if subject.session.lims_path and subject.session.lims_path.as_posix() not in subject.path:
+        if subject.session.lims_path and subject.session.lims_path.as_posix() not in subject.path.as_posix():
             backup_paths.add(subject.session.lims_path.as_posix())
-        if subject.npexp_path and subject.session.npexp_path.as_posix() not in subject.path:
+        if subject.npexp_path and subject.session.npexp_path.as_posix() not in subject.path.as_posix():
             backup_paths.add(subject.session.npexp_path.as_posix())
         if not backup_paths \
-            and subject.z_drive_path and subject.z_drive_path.as_posix() not in subject.path:
+            and subject.z_drive_path and subject.z_drive_path.as_posix() not in subject.path.as_posix():
             backup_paths.add(subject.z_drive_path.as_posix())
             
     # TODO fix order here so lims folder is first, npexp second: converting to list seems to reorder
@@ -153,11 +153,11 @@ def find_valid_backups(subject: dv.DataValidationFile, db: dv.DataValidationDB, 
     if matches:
         for match in matches:
             for backup_path in backup_paths:
-                if match.path.startswith(backup_path) \
-                    and os.path.exists(match.path):
+                if match.path.as_posix().startswith(backup_path) \
+                    and os.path.exists(match.path.as_posix()):
                     backups.add(match)
                 else:
-                    dv.logging.info(f"Valid copy - inaccessible or not in a specified backup path: {match.path}")
+                    dv.logging.info(f"Valid copy - inaccessible or not in a specified backup path: {match.path.as_posix()}")
     
     if not backups:
         for backup_path in backup_paths:

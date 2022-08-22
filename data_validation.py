@@ -183,7 +183,7 @@ def chunk_crc32(file:Any=None, fsize=None) -> str:
     elif isinstance(file, type(pathlib.Path)):
         file = str(file)
     elif isinstance(file, DataValidationFile):
-        file = file.path
+        file = file.path.as_posix()
         fsize = file.size
 
     chunk_size = 65536 # bytes
@@ -384,7 +384,7 @@ class SessionFile:
                 break
             parts = parts[1:]
         else:
-            raise ValueError(f"{self.__class__.__name__}: session_folder not found in path {self.path}")
+            raise ValueError(f"{self.__class__.__name__}: session_folder not found in path {self.path.as_posix()}")
 
         return pathlib.Path(str(self.path).split(str(parts[0]))[0])
 
@@ -410,9 +410,9 @@ class SessionFile:
         '''filepath relative to a session folder's parent'''
         # wherever the file is, get its path relative to the parent of a
         # hypothetical session folder ie. session_id/.../filename.ext :
-        session_relative_path = pathlib.Path(self.path).relative_to(self.root_path)
+        session_relative_path = self.path.relative_to(self.root_path)
         if session_relative_path.parts[0] != self.session.folder:
-            return pathlib.Path(self.session.folder, str(session_relative_path))
+            return pathlib.Path(self.session.folder, session_relative_path.as_posix())
         else:
             return session_relative_path
     
@@ -447,17 +447,18 @@ class SessionFile:
         """Path to possible backup on 'z' drive (might not exist)"""
         running_on_rig = nptk.COMP_ID if "NP." in nptk.COMP_ID else None
         local_path = str(self.path)[0] not in ["/", "\\"]
-        rig_from_path = nptk.Rig.rig_from_path(self.path) 
+        rig_from_path = nptk.Rig.rig_from_path(self.path.as_posix()) 
         
         # get the sync computer's path 
         if (running_on_rig and local_path):
             sync_path = nptk.Rig.Sync.path
         elif rig_from_path:
-            sync_path = f"{rig_from_path}-Sync"
+            rig_idx = nptk.Rig.rig_str_to_int(rig_from_path)
+            sync_path = R'\\' + nptk.ConfigHTTP.get_np_computers(rig_idx,'sync')
         else:
             sync_path = None
             
-        if sync_path and sync_path not in self.path:
+        if sync_path and sync_path not in self.path.as_posix():
             # add the z drive/neuropix data folder for this rig
             return pathlib.Path(
                     sync_path, 
@@ -508,100 +509,110 @@ class DataValidationFile(abc.ABC):
     def __init__(self, path: Union[str,pathlib.Path] = None, checksum: str = None, size: int = None):
         """ setup depending on the inputs """
 
-        if not (path):
+        if not (path or checksum):
             raise ValueError(f"{self.__class__.__name__}: either path or checksum must be set")
 
         if path and not isinstance(path, (str,pathlib.Path)):
             raise TypeError(f"{self.__class__.__name__}: path must be a str pointing to a file: {type(path)}")
+        if path:
+            path = pathlib.Path(path)
 
-        path = pathlib.Path(path)
-
-        # ensure the path is a file, not directory
-        # ideally we would check the path on disk with pathlib.Path.is_file(), but that only works if the file exists
-        # we also can't assume that a file that exists one moment will still exist the next
-        # (threaded operations, deleting files etc) - so no 'if exists, .is_file()?'
-        # we'll try using the suffix/extension first, but be aware that sorted probe folders named 'Neuropix-PXI-100.1' 
-        # will give a non-empty suffix here - probably safe to assume that a numeric suffix is never an actual file
-        is_file = (path.suffix != '')
-        is_file = False if path.suffix.isdecimal() else is_file
-        try:
-            is_file = True if path.is_file() else is_file
-            # is_file() returns false if file doesn't exist so only change it if it exists
-        except:
-            pass
-
-        if not is_file:
-            raise ValueError(f"{self.__class__.__name__}: path must point to a file {path}")
-        
-        self.name = path.name
-        
-        # TODO switch to pathlib representation for path
-        # TODO consolidate file (vs dir) assertion with SessionFile: currently running this twice
-        path = pathlib.Path(path).as_posix()
-
-        # we have a mix in the databases of posix paths with and without the double fwd slash
-        if path[0] == '/' and path[1] != '/':
-            path = '/' + path
-            
-        # set read-only property that will be hashed
-        self._path = path
-        
-        # if a file lives in a probe folder (_probeA, or _probeABC) it may have the same name, size (and even checksum) as
-        # another file in a corresponding folder (_probeB, or _probeDEF) - the data are identical if all the above
-        # match, but it would still be preferable to keep track of these files separately -> this property indicates 
-        probe = re.search(R"(?<=_probe)_?(([A-F]+)|([0-5]{1}))", self.path.split(self.name)[0])
-        if probe:
-            probe_name = probe[0]
-            # only possibile probe_names here are [A-F](any combination), [0-5](single digit) 
-            if len(probe_name) == 1:
-                # convert single-digit probe numbers to letters 
-                if ord('0') <= ord(probe_name) <= ord('5'):
-                    probe_name = chr(ord('A') + int(probe_name))
-                assert ord('A') <= ord(probe_name) <= ord('F'), logging.error("{} is not a valid probe name: must include a single digit [0-5], or some combination of capital letters [A-F]".format(probe_name))
-            else:
-                assert all(letter in "ABCDEF" for letter in probe_name), logging.error("{} is not a valid probe name: must include a single digit [0-5], or some combination of capital letters [A-F]".format(probe_name))
-        self.probe_dir = probe_name if probe else None
-        
-        if not size: 
+            # ensure the path is a file, not directory
+            # ideally we would check the path on disk with pathlib.Path.is_file(), but that only works if the file exists
+            # we also can't assume that a file that exists one moment will still exist the next
+            # (threaded operations, deleting files etc) - so no 'if exists, .is_file()?'
+            # we'll try using the suffix/extension first, but be aware that sorted probe folders named 'Neuropix-PXI-100.1' 
+            # will give a non-empty suffix here - probably safe to assume that a numeric suffix is never an actual file
+            is_file = (path.suffix != '')
+            is_file = False if path.suffix.isdecimal() else is_file
             try:
-                size = os.path.getsize(self.path)
+                is_file = True if path.is_file() else is_file
+                # is_file() returns false if file doesn't exist so only change it if it exists
             except:
                 pass
-        if size and not isinstance(size, int):
+
+            if not is_file:
+                raise ValueError(f"{self.__class__.__name__}: path must point to a file {path}")
+            
+            self.name = path.name
+            
+            # TODO consolidate file (vs dir) assertion with SessionFile: currently running this twice
+            
+            # TODO update lines below using path as str
+            path = path.as_posix()
+
+            # we have a mix in the databases of posix paths with and without the double fwd slash
+            if path[0] == '/' and path[1] != '/':
+                path = '/' + path
+                
+            # if a file lives in a probe folder (_probeA, or _probeABC) it may have the same name, size (and even checksum) as
+            # another file in a corresponding folder (_probeB, or _probeDEF) - the data are identical if all the above
+            # match, but it would still be preferable to keep track of these files separately -> this property indicates 
+            probe = re.search(R"(?<=_probe)_?(([A-F]+)|([0-5]{1}))", path.split(self.name)[0])
+            if probe:
+                probe_name = probe[0]
+                # only possibile probe_names here are [A-F](any combination), [0-5](single digit) 
+                if len(probe_name) == 1:
+                    # convert single-digit probe numbers to letters 
+                    if ord('0') <= ord(probe_name) <= ord('5'):
+                        probe_name = chr(ord('A') + int(probe_name))
+                    assert ord('A') <= ord(probe_name) <= ord('F'), logging.error("{} is not a valid probe name: must include a single digit [0-5], or some combination of capital letters [A-F]".format(probe_name))
+                else:
+                    assert all(letter in "ABCDEF" for letter in probe_name), logging.error("{} is not a valid probe name: must include a single digit [0-5], or some combination of capital letters [A-F]".format(probe_name))
+        
+        # set read-only property that will be hashed
+        self._path = pathlib.Path(path) if path else None
+        
+        # set read-only property, won't be hashed
+        self._probe_dir = probe_name if probe else None # avoid checking 'if probe' since it could equal 0
+        
+        if self.path and size is None: 
+            try:
+                size = os.path.getsize(self.path.as_posix())
+            except:
+                size = None
+        if size is not None and not isinstance(size, int):
             if isinstance(size, str) and size.isdecimal():
                 size = int(size)
             else:
                 raise ValueError(f"{self.__class__.__name__}: size must be an integer {size}")
+        
         # set read-only property that will be hashed
         self._size = size
         
-
         if not checksum \
             and self.size and self.size < self.checksum_threshold \
-            and os.path.exists(self.path) \
+            and os.path.exists(self.path.as_posix()) \
             :
             checksum = self.__class__.generate_checksum(self.path, self.size) # change to use instance method if available
             
         if checksum and not self.__class__.checksum_validate(checksum):
             raise ValueError(f"{self.__class__.__name__}: trying to set an invalid {self.checksum_name} checksum")
         
-        if checksum:
-            # set read-only property that will be hashed
-            self._checksum = checksum
+        # set read-only property that will be hashed
+        self._checksum = checksum if checksum else None
         
     # read-only methods
     @property
     def path(self):
         if hasattr(self, '_path') and self._path:
             return self._path
+        return None
     @property
     def size(self):
-        if hasattr(self, '_size') and self._size:
+        if hasattr(self, '_size') and self._size is not None:
             return self._size
+        return None
     @property
     def checksum(self):
-        if hasattr(self, '_checksum') and self._checksum:
+        if hasattr(self, '_checksum') and self._checksum is not None:
             return self._checksum
+        return None 
+    @property
+    def probe_dir(self):
+        if hasattr(self, '_probe_dir') and self._probe_dir:
+            return self._probe_dir
+        return None
     
     @classmethod
     def generate_checksum(cls, path, size=None) -> str:
@@ -621,10 +632,10 @@ class DataValidationFile(abc.ABC):
                 self.report(others)
         else:
             result = self.Match(self==other).name
-            logging.info(f"{result} | {self.path} {other.path} | {self.checksum} {other.checksum} | {self.size} {other.size} bytes")
+            logging.info(f"{result} | {self.path.as_posix()} {other.path} | {self.checksum} {other.checksum} | {self.size} {other.size} bytes")
     
     def __repr__(self):
-        return f"(path='{self.path or ''}', checksum='{self.checksum or ''}', size={self.size or ''})"
+        return f"(path='{self.path.as_posix() or ''}', checksum='{self.checksum or ''}', size={self.size or ''})"
 
     def __lt__(self, other):
         if self.name and other.name:
@@ -662,14 +673,14 @@ class DataValidationFile(abc.ABC):
         if self.checksum and other.checksum \
             and (self.checksum == other.checksum) \
             and (self.size == other.size) \
-            and (self.path.lower() == other.path.lower()) \
+            and (self.path.as_posix().lower() == other.path.as_posix().lower()) \
             : # self
             return self.__class__.Match.SELF.value
 
         #! watch out: SELF_NO_CHECKSUM and OTHER_NO_CHECKSUM
         # depend on the order of objects in the inequality
         elif (self.size == other.size) \
-            and (self.path.lower() == other.path.lower()) \
+            and (self.path.as_posix().lower() == other.path.as_posix().lower()) \
             and (not self.checksum) \
             and (other.checksum) \
             : # self without checksum confirmation (self missing)
@@ -677,17 +688,17 @@ class DataValidationFile(abc.ABC):
         #! watch out: SELF_NO_CHECKSUM and OTHER_NO_CHECKSUM
         # depend on the order of objects in the inequality
         elif (self.size == other.size) \
-            and (self.path.lower() == other.path.lower()) \
+            and (self.path.as_posix().lower() == other.path.as_posix().lower()) \
             and (self.checksum) \
             and not (other.checksum) \
             : # self without checksum confirmation (other missing)
             return self.__class__.Match.OTHER_NO_CHECKSUM.value
 
-        elif self.checksum and other.checksum \
+        elif (self.checksum and other.checksum) \
             and (self.checksum == other.checksum) \
             and (self.size == other.size) \
             and (self.name.lower() == other.name.lower()) \
-            and (self.path.lower() != other.path.lower()) \
+            and (self.path.as_posix().lower() != other.path.as_posix().lower()) \
             and (self.probe_dir == other.probe_dir) \
             : # valid copy, not self
             return self.__class__.Match.VALID_COPY_SAME_NAME.value
@@ -696,14 +707,14 @@ class DataValidationFile(abc.ABC):
             and (self.checksum == other.checksum) \
             and (self.size == other.size) \
             and (self.name.lower() != other.name.lower()) \
-            and (self.path.lower() != other.path.lower()) \
+            and (self.path.as_posix().lower() != other.path.as_posix().lower()) \
             and (self.probe_dir == other.probe_dir) \
             : # valid copy, different name
             return self.__class__.Match.VALID_COPY_RENAMED.value
 
         elif self.checksum and other.checksum \
             and (self.name.lower() == other.name.lower()) \
-            and (self.path.lower() != other.path.lower()) \
+            and (self.path.as_posix().lower() != other.path.as_posix().lower()) \
             and (self.probe_dir == other.probe_dir) \
             : # invalid copy ( multiple categories)
 
@@ -747,7 +758,7 @@ class DataValidationFile(abc.ABC):
     def __hash__(self):
         # this might be a bad idea: added to allow for set() operations on DVFiles to remove duplicates when getting
         # a database - but DVFiles are mutable
-        return hash(self.checksum) ^ hash(self.size) ^ hash(self.path)
+        return hash(self.checksum) ^ hash(self.size) ^ hash(self.path.as_posix())
 
 class CRC32DataValidationFile(DataValidationFile, SessionFile):
 
@@ -769,8 +780,8 @@ class CRC32DataValidationFile(DataValidationFile, SessionFile):
     def __init__(self, path: str = None, checksum: str = None, size: int = None):
         # if the path doesn't contain a session_id, this will raise an error:
         # try:
-        SessionFile.__init__(self, path)
         DataValidationFile.__init__(self, path=path, checksum=checksum, size=size)
+        SessionFile.__init__(self, path)
 
 
 class DataValidationDB(abc.ABC):
@@ -915,7 +926,7 @@ class MongoDataValidationDB(DataValidationDB):
 
         cls.db.insert_one({
             "session_id": file.session.id,
-            "path": file.path,
+            "path": file.path.as_posix(),
             "checksum": file.checksum,
             "size": file.size,
             "type": file.checksum_name,
@@ -1424,7 +1435,7 @@ def report_multline_print(file: DataValidationFile, comparisons: List[DataValida
 
     logging.info("#" * column_width)
     logging.info("\n")
-    logging.info(f"subject: {file.path}")
+    logging.info(f"subject: {file.path.as_posix()}")
     logging.info("\n")
     logging.info("-" * column_width)
 
@@ -1535,4 +1546,14 @@ def clear_dirs():
     
 if __name__ == "__main__":
     clear_dirs()
+    # p = "/allen/programs/mindscope/workgroups/np-exp/1127061307_569156_20210908/1127061307_569156_20210908_probeDEF/recording_slot3_3.npx2"
+    # x = CRC32DataValidationFile(path=p)
+    # xx = strategies.exchange_if_checksum_in_db(x,MongoDataValidationDB)
     
+    # o = "/allen/programs/braintv/production/visualbehavior/prod0/specimen_1089868535/ecephys_session_1127061307/1127061307_569156_20210908_probeDEF/recording_slot3_3.npx2"
+    # y = CRC32DataValidationFile(path=o)
+    
+    
+    
+    # m = MongoDataValidationDB.get_matches(xx)
+    # print(m)

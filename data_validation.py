@@ -139,7 +139,7 @@ logHandler = logging.handlers.RotatingFileHandler(
     maxBytes=10000, 
     backupCount=10,
     )
-logHandler.formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s",datefmt="%Y-%m-%d %H:%M")
+logHandler.formatter = logging.Formatter("%(asctime)s %(message)s",datefmt="%Y-%m-%d %H:%M")
 log.addHandler(logHandler)
 log.setLevel(logging.ERROR)
 
@@ -632,7 +632,7 @@ class DataValidationFile(abc.ABC):
                 self.report(others)
         else:
             result = self.Match(self==other).name
-            logging.info(f"{result} | {self.path.as_posix()} {other.path} | {self.checksum} {other.checksum} | {self.size} {other.size} bytes")
+            logging.critical(f"{result} | {self.path.as_posix()} {other.path} | {self.checksum} {other.checksum} | {self.size} {other.size} bytes")
     
     def __repr__(self):
         return f"(path='{self.path.as_posix() or ''}', checksum='{self.checksum or ''}', size={self.size or ''})"
@@ -1363,6 +1363,9 @@ class DataValidationFolder:
         # return cumulative sum of bytes deleted from folder
         deleted_bytes = [d for d in deleted_bytes if d != 0]
         print(f"{len(deleted_bytes)} files deleted | {sum(deleted_bytes) / 1024**3 :.1f} GB recovered")
+        # TODO add number of files deleted / total files on disk
+        if deleted_bytes:
+            logging.critical(f"{len(deleted_bytes)} files deleted from {self.path} | {sum(deleted_bytes) / 1024**3 :.1f} GB recovered")
         return deleted_bytes
 
 
@@ -1541,19 +1544,8 @@ def clear_dirs():
         
         total_deleted_bytes += deleted_bytes 
         
-    print(f"{divider}Finished clearing.\n{len(total_deleted_bytes)} files deleted | {sum(total_deleted_bytes) / 1024**3 :.1f} GB recovered\n")
+    logging.critical(f"{divider}Finished clearing.\n{len(total_deleted_bytes)} files deleted | {sum(total_deleted_bytes) / 1024**3 :.1f} GB recovered\n")
     
     
 if __name__ == "__main__":
     clear_dirs()
-    # p = "/allen/programs/mindscope/workgroups/np-exp/1127061307_569156_20210908/1127061307_569156_20210908_probeDEF/recording_slot3_3.npx2"
-    # x = CRC32DataValidationFile(path=p)
-    # xx = strategies.exchange_if_checksum_in_db(x,MongoDataValidationDB)
-    
-    # o = "/allen/programs/braintv/production/visualbehavior/prod0/specimen_1089868535/ecephys_session_1127061307/1127061307_569156_20210908_probeDEF/recording_slot3_3.npx2"
-    # y = CRC32DataValidationFile(path=o)
-    
-    
-    
-    # m = MongoDataValidationDB.get_matches(xx)
-    # print(m)

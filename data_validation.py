@@ -558,9 +558,9 @@ class DataValidationFile(abc.ABC):
                 assert all(letter in "ABCDEF" for letter in probe_name), logging.error("{} is not a valid probe name: must include a single digit [0-5], or some combination of capital letters [A-F]".format(probe_name))
         self.probe_dir = probe_name if probe else None
         
-        if path and not size: 
+        if not size: 
             try:
-                size = os.path.getsize(path)
+                size = os.path.getsize(self.path)
             except:
                 pass
         if size and not isinstance(size, int):

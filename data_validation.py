@@ -1320,10 +1320,11 @@ class DataValidationFolder:
         
         # tidy up empty subfolders:
         if self.include_subfolders:
-            check_dir_paths = os.walk(self.path, topdown=False, followlinks=False)
+            check_dir_paths = itertools.chain(
+                os.walk(self.path, topdown=False, followlinks=False), [self.path])
         else:
-            check_dir_paths = [d for d in pathlib.Path(self.path).iterdir() if d.is_dir()] 
-        check_dir_paths = itertools.chain(check_dir_paths, [pathlib.Path(self.path)])
+            check_dir_paths = itertools.chain(
+                [d for d in pathlib.Path(self.path).iterdir() if d.is_dir()] , [pathlib.Path(self.path)])
         for check_dir in check_dir_paths:
             check_dir = pathlib.Path(check_dir[0]) if self.include_subfolders else check_dir
             try:

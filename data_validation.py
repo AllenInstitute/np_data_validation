@@ -357,8 +357,11 @@ class SessionFile:
         if not is_file:
             raise ValueError(f"{self.__class__.__name__}: path must point to a file {path}")
         else:
-            self.path = path
-
+            try:
+                self.path = path # might be read-only, in the case of DVFiles
+            except:
+                pass
+            
         self.name = self.path.name
 
         # get the name of the folder the file lives in (which may be the same as self.root_path below)
@@ -534,13 +537,14 @@ class DataValidationFile(abc.ABC):
         
         # TODO switch to pathlib representation for path
         # TODO consolidate file (vs dir) assertion with SessionFile: currently running this twice
-        # TODO freeze path, size, checksum attribs
-        self.path = pathlib.Path(path).as_posix()
+        path = pathlib.Path(path).as_posix()
 
         # we have a mix in the databases of posix paths with and without the double fwd slash
-        if self.path[0] == '/' and self.path[1] != '/':
-            self.path = '/' + self.path
+        if path[0] == '/' and path[1] != '/':
+            path = '/' + path
             
+        # set read-only property that will be hashed
+        self._path = path
         
         # if a file lives in a probe folder (_probeA, or _probeABC) it may have the same name, size (and even checksum) as
         # another file in a corresponding folder (_probeB, or _probeDEF) - the data are identical if all the above
@@ -568,17 +572,37 @@ class DataValidationFile(abc.ABC):
                 size = int(size)
             else:
                 raise ValueError(f"{self.__class__.__name__}: size must be an integer {size}")
-        self.size = size
+        # set read-only property that will be hashed
+        self._size = size
         
-        if checksum:
-            self.checksum = checksum
 
         if not checksum \
-            and self.path and os.path.exists(self.path) \
             and self.size and self.size < self.checksum_threshold \
+            and os.path.exists(self.path) \
             :
-            self.checksum = self.__class__.generate_checksum(self.path, self.size) # change to use instance method if available
-
+            checksum = self.__class__.generate_checksum(self.path, self.size) # change to use instance method if available
+            
+        if checksum and not self.__class__.checksum_validate(checksum):
+            raise ValueError(f"{self.__class__.__name__}: trying to set an invalid {self.checksum_name} checksum")
+        
+        if checksum:
+            # set read-only property that will be hashed
+            self._checksum = checksum
+        
+    # read-only methods
+    @property
+    def path(self):
+        if hasattr(self, '_path') and self._path:
+            return self._path
+    @property
+    def size(self):
+        if hasattr(self, '_size') and self._size:
+            return self._size
+    @property
+    def checksum(self):
+        if hasattr(self, '_checksum') and self._checksum:
+            return self._checksum
+    
     @classmethod
     def generate_checksum(cls, path, size=None) -> str:
         cls.checksum_test(cls.checksum_generator)
@@ -589,14 +613,6 @@ class DataValidationFile(abc.ABC):
         if not hasattr(self, '_checksum'):
             return None
         return self._checksum
-    
-    @checksum.setter
-    def checksum(self, value: str):
-        if self.__class__.checksum_validate(value):
-            # print(f"setting {self.checksum_name} checksum: {value}")
-            self._checksum = value
-        else:
-            raise ValueError(f"{self.__class__.__name__}: trying to set an invalid {self.checksum_name} checksum")
     
     def report(self, other: Union[DataValidationFile, List[DataValidationFile]]):
         """Log a report on the comparison with one or more files"""

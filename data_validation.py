@@ -1323,11 +1323,12 @@ class DataValidationFolder:
             check_dir_paths = os.walk(self.path, topdown=False, followlinks=False)
         else:
             check_dir_paths = [d for d in pathlib.Path(self.path).iterdir() if d.is_dir()] 
-        check_dir_paths = itertools.chain(check_dir_paths, self.path)
+        check_dir_paths = itertools.chain(check_dir_paths, [pathlib.Path(self.path)])
         for check_dir in check_dir_paths:
+            check_dir = pathlib.Path(check_dir[0]) if self.include_subfolders else check_dir
             try:
-                os.rmdir(check_dir[0]) # raises error if not empty
-                logging.info(f"{self.__class__.__name__}: removed empty folder {check_dir[0]}")
+                check_dir.rmdir() # raises error if not empty
+                logging.info(f"{self.__class__.__name__}: removed empty folder {check_dir}")
             except OSError:
                 continue
         

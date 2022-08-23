@@ -1,4 +1,42 @@
-"""Strategies for looking up DataValidationFiles in a database and performing some action depending on context."""
+"""Strategies for looking up DataValidationFiles in a database and performing some action depending on context.
+    
+    Guideline is to only use dv.DataValidationFiles or dv.DataValidationDBs as arguments for functions. 
+    
+    For a given DVFile:
+        1) LIMS is the gold standard backup location 
+        2) NPEXP is large temporary storage, can only be cleared when valid backup is on lims, should be synced with z drive
+        3) ZDRIVE is small temporary storage prior to lims upload, can be cleared when valid backup is on lims (safest) or npexp
+        4) any other backup location is treated the same as z drive
+        
+    Checking how a file is backed-up and can be deleted to recover space:
+    (in order of execution)
+
+        - VALID copy on LIMS
+            DELETE
+
+        - INVALID copy on LIMS 
+        - VALID copy on NPEXP (file itself NOT on npexp)
+            DELETE (depending on file location, may represent original data - replace lims copy with npexp copy)
+
+        - INVALID copy on LIMS 
+            NO DELETE (look for other copies to find original checksum)
+
+        - UNKNOWN or no matching files found on LIMS
+            NO DELETE (wait for Lims upload or delete manually)
+        
+        - VALID copy on NPEXP
+            DELETE
+
+        - INVALID copy on NPEXP
+            NO DELETE (wait for lims upload or decide which is correct/original data before lims upload)
+            
+        - VALID copy in ZDRIVE/other backup location specified (file itself NOT on npexp)
+            DELETE
+    
+    Need a STATUS enum for each of the above cases that can be combined with whether or not the matched copy is
+    accessible or just an entry in the database (ie file may have been deleted).
+    
+"""
 
 from __future__ import annotations
 

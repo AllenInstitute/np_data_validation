@@ -35,6 +35,7 @@
     
     Need a STATUS enum for each of the above cases that can be combined with whether or not the matched copy is
     accessible or just an entry in the database (ie file may have been deleted).
+    Also remember that the DB is incomplete and will never have all files in it: if we don't find matches in the db
     
 """
 

@@ -1172,6 +1172,34 @@ class CRC32JsonDataValidationDB(DataValidationDB):
                 ]
 
 
+class DataValidationStatus:
+    """Provides a shorthand (enum) that represents the position of a file along the road to LIMS and the existence of
+    other related files further along that road - mainly intended to simplify the question of 'can we delete this
+    file?'.
+
+    We'll divide the answer to that question into two parts:
+        1) are there related files already in the database and do they compare favorably to the file in question?
+            - where do they live currently? (LIMS, NP-EXP, or OTHER (considered temporary storage, unless specified))
+            - are they valid copies?
+            - which storage
+        2) are there related files out there on the filesystem that we can find (and add to the database with a checksum,
+           time-permitting)?
+
+    """
+
+    db: Type[DataValidationDB] = MongoDataValidationDB
+
+    def __init__(
+        self,
+        file: DataValidationFile = None,
+        path: str = None,
+        checksum: str = None,
+        size: int = None,
+    ):
+        if not file:
+            file = self.db.DVFile(path=path, checksum=checksum, size=size)
+
+
 class DataValidationFolder:
 
     db: Type[DataValidationDB] = MongoDataValidationDB

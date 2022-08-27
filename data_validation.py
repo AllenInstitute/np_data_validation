@@ -1201,6 +1201,9 @@ class DataValidationStatus:
 
 
 class DataValidationFolder:
+    """Represents a folder for which we want to checksum the contents and add to database,
+    possibly deleting if a valid copy exists elswhere (evalutated using DVStatus)
+    """
 
     db: Type[DataValidationDB] = MongoDataValidationDB
     backup_paths: Set[str] = None # auto-populated with lims, npexp, sync computer folders

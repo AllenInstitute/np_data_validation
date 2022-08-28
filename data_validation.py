@@ -1349,6 +1349,118 @@ class DataValidationStatus:
     ):
         if not file:
             file = self.db.DVFile(path=path, checksum=checksum, size=size)
+        self.file = file
+
+    class Backup(enum.IntFlag):
+        """Evaluate where a file is in the backup process.
+
+            Using three digits to avoid confusion with DVFile.Match.
+
+              For a given DVFile:
+            1) LIMS is the gold standard backup location
+            2) NPEXP is large temporary storage, can only be cleared when valid backup is on lims, should be synced with z drive
+            3) ZDRIVE is small temporary storage prior to lims upload, can be cleared when valid backup is on lims (safest) or npexp
+            4) any other backup location is treated the same as z drive
+
+        Checking how a file is backed-up and can be deleted to recover space:
+        (in order of execution)
+
+            - VALID copy on LIMS
+                DELETE
+
+            - INVALID copy on LIMS
+            - VALID copy on NPEXP (file itself NOT on npexp)
+                DELETE (depending on file location, may represent original data - replace lims copy with npexp copy)
+
+            - INVALID copy on LIMS
+                NO DELETE (look for other copies to find original checksum)
+
+            - UNKNOWN or no matching files found on LIMS
+                NO DELETE (wait for Lims upload or delete manually)
+
+            - VALID copy on NPEXP
+                DELETE
+
+            - INVALID copy on NPEXP
+                NO DELETE (wait for lims upload or decide which is correct/original data before lims upload)
+
+            - VALID copy in ZDRIVE/other backup location specified (file itself NOT on npexp)
+                DELETE
+
+        Need a STATUS enum for each of the above cases that can be combined with whether or not the matched copy is
+        accessible or just an entry in the database (ie file may have been deleted).
+            - since getting the status requires running 'get_matches' it would be nice to return that list of DVFiles too,
+              to present the data or guide next steps
+            -
+
+
+        Also remember that the DB is incomplete and always will be: if we don't find matches in the db
+        we can go look for files in known backup locations add add them to the db and re-check status.
+        In practice this is less clear-cut than STATUS enum
+            - how exhaustively do we want to search for matches? (synology drives + many 10TB disks that aren't indexed)
+            - do we checksum first and ask questions later? (slow)
+        * a medium/longer-term strategy may be to index all data disks by entering them into the db without checksum info to
+        make the db more complete
+
+        """
+
+        # TODO write logic for determining and returning backup status
+        # =======================================================================================
+        # hierarchy in backup process is taken into account
+        # - only the highest (abs) number needs to be considered
+
+        # ---------------------------------------------------------------------------------------
+        # copies exist, with full information available
+        VALID_ON_LIMS = 601
+        INVALID_ON_LIMS = -601
+
+        VALID_ON_NPEXP = VALID_ON_SD = 501
+        INVALID_ON_NPEXP = INVALID_ON_SD = -501
+
+        VALID_ON_OTHER = VALID_ON_ZDRIVE = 401
+        INVALID_ON_OTHER = INVALID_ON_ZDRIVE = -401
+
+        # ---------------------------------------------------------------------------------------
+        # copies exist, more computation is needed to validate
+
+        COPY_ON_LIMS_MISSING_SELF = 303  # checksum self.file
+        COPY_ON_LIMS_MISSING_OTHER = 302  # checksum match found
+        COPY_ON_LIMS_MISSING_BOTH = 301
+
+        COPY_ON_NPEXP_MISSING_SELF = COPY_ON_SD_MISSING_SELF = 203
+        COPY_ON_NPEXP_MISSING_OTHER = COPY_ON_SD_MISSING_OTHER = 202
+        COPY_ON_NPEXP_MISSING_BOTH = COPY_ON_SD_MISSING_BOTH = 201
+
+        COPY_ON_OTHER_MISSING_SELF = COPY_ON_ZDRIVE_MISSING_SELF = 103
+        COPY_ON_OTHER_MISSING_OTHER = COPY_ON_ZDRIVE_MISSING_OTHER = 102
+        COPY_ON_OTHER_MISSING_BOTH = COPY_ON_ZDRIVE_MISSING_BOTH = 101
+
+        # ---------------------------------------------------------------------------------------
+        # no copies found
+        NO_COPIES_IN_DB = 1  # ? find in filesystem
+        NO_COPIES_IN_FILESYSTEM = 0  # ? add filesystem locations
+        UNKNOWN = -1
+
+    @property
+    def lims_copy_exists(self) -> Union[pathlib.Path, None, bool]:
+        """Returns path to a file's copy on LIMS, None if the file itself is on LIMS, False if no copy exists"""
+        if not self.file.lims_backup:  # only returns if it exists
+            return False
+        elif self.file.lims_backup == self.file.path:
+            return None
+        else:
+            return self.file.lims_backup
+
+    @property
+    def npexp_copy_exists(self) -> Union[pathlib.Path, None, bool]:
+        """Returns path to a file's copy on np-exp, None if the file itself is on np-exp, False if no copy exists"""
+        if not self.file.npexp_backup:  # only returns if it exists
+            return False
+        elif self.file.npexp_backup == self.file.path:
+            return None
+        else:
+            return self.file.npexp_backup
+
 
 
 class DataValidationFolder:

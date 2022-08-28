@@ -745,21 +745,56 @@ class DataValidationFile(abc.ABC):
 
     @enum.unique
     class Match(enum.IntFlag):
-        """Integer enum for DataValidationFile equality - test for (file==other)>0 for
-        matches of interest and >20 for valid backups"""
+        """Integer enum as a shorthand for DataValidationFile comparison.
+        - test for (file==other)>10 for matches of interest
+        - >15 for possible copies and >20 for valid backups
+        """
+
+        # =======================================================================================
+        # files with nothing in common - these comparisons are generally not useful & filtered out
 
         UNRELATED = 0
         UNKNOWN = -1
+        CHECKSUM_COLLISION = -2  # rare case of different files with the same checksum
+
+        # =======================================================================================
+        # files at the same location on disk
+
         SELF = 5
-        #! watch out: SELF_NO_CHECKSUM and OTHER_NO_CHECKSUM
-        #! depend on the order of objects in the inequality
-        SELF_NO_CHECKSUM = 6
-        OTHER_NO_CHECKSUM = 7
-        CHECKSUM_COLLISION = 10
-        UNSYNCED_DATA = 11
-        UNSYNCED_CHECKSUM = 12
-        UNSYNCED_OR_CORRUPT_DATA = 13
-        VALID_COPY_SAME_NAME = 21
+
+        #!
+        SELF_MISSING_SELF = 6  # self is missing a checksum  #? further info
+        SELF_MISSING_OTHER = 7  # other file is missing a checksum  #? further info
+        #! watch out: the two above depend on the order of objects in the inequality
+
+        SELF_PREVIOUS_VERSION = 8  # path is identical, size or checksum mismatch
+
+        # =======================================================================================
+        # the most tentative of matches - going off only the size (+ probe letters if applicable)
+
+        POSSIBLE_COPY_RENAMED = 16  # ? further info
+
+        # =======================================================================================
+        # category for files with the same name in different locations
+
+        # ---------------------------------------------------------------------------------------
+        # mismatched data or db entries need updating
+
+        COPY_UNSYNCED_CHECKSUM = 10  # sizes differ but checksums match
+        COPY_UNSYNCED_OR_CORRUPT_DATA = 11  # sizes match, but data differs
+        COPY_UNSYNCED_DATA = 12  # checksum and size differ
+
+        # ---------------------------------------------------------------------------------------
+        # copies that might be valid, but need checksums to be sure
+
+        COPY_MISSING_BOTH = 17  # ? further info
+        COPY_MISSING_SELF = 18  # ? further info
+        COPY_MISSING_OTHER = 19  # ? further info
+
+        # ---------------------------------------------------------------------------------------
+        # matching data - this is generally what we want to search for to validate backups
+
+        VALID_COPY = 21
         VALID_COPY_RENAMED = 22
 
     def __eq__(self, other):
@@ -775,7 +810,7 @@ class DataValidationFile(abc.ABC):
         ):  # self
             return self.__class__.Match.SELF.value
 
-        #! watch out: SELF_NO_CHECKSUM and OTHER_NO_CHECKSUM
+        #! watch out: SELF_MISSING_SELF and SELF_MISSING_OTHER
         # depend on the order of objects in the inequality
         elif (
             (self.size == other.size)
@@ -783,8 +818,8 @@ class DataValidationFile(abc.ABC):
             and (not self.checksum)
             and (other.checksum)
         ):  # self without checksum confirmation (self missing)
-            return self.__class__.Match.SELF_NO_CHECKSUM.value
-        #! watch out: SELF_NO_CHECKSUM and OTHER_NO_CHECKSUM
+            return self.__class__.Match.SELF_MISSING_SELF.value
+        #! watch out: SELF_MISSING_SELF and SELF_MISSING_OTHER
         # depend on the order of objects in the inequality
         elif (
             (self.size == other.size)
@@ -792,7 +827,48 @@ class DataValidationFile(abc.ABC):
             and (self.checksum)
             and not (other.checksum)
         ):  # self without checksum confirmation (other missing)
-            return self.__class__.Match.OTHER_NO_CHECKSUM.value
+            return self.__class__.Match.SELF_MISSING_OTHER.value
+
+        elif (self.size != other.size or self.checksum != other.checksum) and (
+            self.path.as_posix().lower() == other.path.as_posix().lower()
+        ):  # self with mismatching data (only one of these can exist)
+            return self.__class__.Match.SELF_PREVIOUS_VERSION.value
+
+        elif (
+            (not self.checksum and not other.checksum)
+            and (self.size == other.size)
+            and (self.name.lower() == other.name.lower())
+            and (self.path.as_posix().lower() != other.path.as_posix().lower())
+            and (self.probe_dir == other.probe_dir)
+        ):  # copy without checksum confirmation (both missing)
+            return self.__class__.Match.COPY_MISSING_BOTH.value
+
+        elif (
+            (self.checksum and not other.checksum)
+            and (self.size == other.size)
+            and (self.name.lower() == other.name.lower())
+            and (self.path.as_posix().lower() != other.path.as_posix().lower())
+            and (self.probe_dir == other.probe_dir)
+        ):  # copy without checksum confirmation (other missing)
+            return self.__class__.Match.COPY_MISSING_OTHER.value
+
+        elif (
+            (not self.checksum and other.checksum)
+            and (self.size == other.size)
+            and (self.name.lower() == other.name.lower())
+            and (self.path.as_posix().lower() != other.path.as_posix().lower())
+            and (self.probe_dir == other.probe_dir)
+        ):  # copy without checksum confirmation (self missing)
+            return self.__class__.Match.COPY_MISSING_SELF.value
+
+        elif (
+            (not self.checksum or not other.checksum)
+            and (self.size == other.size)
+            and (self.name.lower() != other.name.lower())
+            and (self.path.as_posix().lower() != other.path.as_posix().lower())
+            and (self.probe_dir == other.probe_dir)
+        ):  # valid copy, not self, different name
+            return self.__class__.Match.POSSIBLE_COPY_RENAMED.value
 
         elif (
             (self.checksum and other.checksum)

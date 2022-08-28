@@ -449,13 +449,23 @@ class SessionFile:
 
     @property
     def npexp_path(self) -> pathlib.Path:
-        """filepath on npexp (might not exist)"""
-        if self.session:
-            return self.session.NPEXP_ROOT / self.session_relative_path
-        else:
-            return None
+        """Presumed filepath on npexp (might not currently exist)"""
+        return self.session.NPEXP_ROOT / self.session_relative_path
 
-    # TODO add lims_path property
+    @property
+    def lims_path(self) -> pathlib.Path:
+        """Actual path on LIMS """
+        #* this should eventually map filename to LIMS wkft and look up the location
+        if hasattr(self,'_lims_path'):
+            return self._lims_path
+        if self.probe_dir and len(self.probe_dir) == 1:
+            # sorted single probe folders have different names on lims
+            paths = [path for path in self.session.lims_path.rglob('/'.join(self.session_relative_path.parts[1:]))]
+        else:    
+            paths = [path for path in self.session.lims_path.rglob(self.relative_path.as_posix())]
+        if paths:
+            self._lims_path = paths[-1]
+            return self._lims_path
 
     @property
     def z_drive_path(self) -> pathlib.Path:

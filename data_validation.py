@@ -448,36 +448,58 @@ class SessionFile:
         return pathlib.Path(self.session_relative_path.relative_to(self.session.folder))
 
     @property
-    def npexp_path(self) -> pathlib.Path:
-        """Presumed filepath on npexp (might not currently exist)"""
+    def npexp_backup(self) -> pathlib.Path:
+        """Actual path to backup on npexp if it currently exists"""
+        # unlike the properties below this function does negligible computation - no need to 'cache' it
+        return self.get_npexp_path() if self.get_npexp_path().exists() else None
+
+    def get_npexp_path(self) -> pathlib.Path:
+        """Presumed path to file on npexp (may not exist)"""
         return self.session.NPEXP_ROOT / self.session_relative_path
 
     @property
-    def lims_path(self) -> pathlib.Path:
-        """Actual path on LIMS """
-        #* this should eventually map filename to LIMS wkft and look up the location
-        if hasattr(self,'_lims_path'):
-            return self._lims_path
+    def lims_backup(self) -> pathlib.Path:
+        """Actual path to backup on LIMS if it currently exists"""
+        # * this should eventually map filename to LIMS wkft and look up the location
+        if hasattr(self, "_lims_backup"):
+            return self._lims_backup if self._lims_backup.exists() else None
+        else:
+            self._lims_backup = self.get_lims_path()
+            return self.lims_backup
+
+    def get_lims_path(self) -> pathlib.Path:
+        """Path to backup on Lims (which must exist for this current method to work)"""
+        if not self.session.lims_path:
+            return None
         if self.probe_dir and len(self.probe_dir) == 1:
             # sorted single probe folders have different names on lims
-            paths = [path for path in self.session.lims_path.rglob('/'.join(self.session_relative_path.parts[1:]))]
-        else:    
-            paths = [path for path in self.session.lims_path.rglob(self.relative_path.as_posix())]
+            paths = [
+                path
+                for path in self.session.lims_path.rglob(
+                    "/".join(self.session_relative_path.parts[1:])
+                )
+            ]
+        else:
+            paths = [
+                path
+                for path in self.session.lims_path.rglob(self.relative_path.as_posix())
+            ]
         if paths:
-            self._lims_path = paths[-1]
-            return self._lims_path
+            return paths[
+                -1
+            ]  # return the most recent entry - would be preferable to find the actual entry in lims db (may be multiple on disk), or check filesize here
 
     @property
-    def z_drive_path(self) -> pathlib.Path:
-        """Path to possible backup on 'z' drive (might not exist)
+    def z_drive_backup(self) -> pathlib.Path:
+        """Path to backup on 'z' drive if it currently exists.
 
         This property getter just prevents repeat calls to find the path
         """
-        if hasattr(self, "_z_drive_path"):
-            return self._z_drive_path
+        if hasattr(self, "_z_drive_backup"):
+            return self._z_drive_backup if self._z_drive_backup.exists() else None
         else:
-            self._z_drive_path = self.get_z_drive_path()
-            return self.z_drive_path
+            self._z_drive_backup = self.get_z_drive_backup()
+            return self.z_drive_backup  # public property that checks existence
 
     def get_z_drive_path(self) -> pathlib.Path:
         """Path to possible backup on 'z' drive (might not exist)"""
@@ -500,6 +522,8 @@ class SessionFile:
                 pathlib.Path(sync_path, "neuropixels_data", self.session.folder)
                 / self.session_relative_path
             )
+        else:
+            return None
 
     def __lt__(self, other):
         if self.session.id == other.session.id:

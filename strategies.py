@@ -35,7 +35,19 @@
     
     Need a STATUS enum for each of the above cases that can be combined with whether or not the matched copy is
     accessible or just an entry in the database (ie file may have been deleted).
+        - since getting the status requires running 'get_matches' it would be nice to return that list of DVFiles too,
+          to present the data or guide next steps
+        - 
+        
+    
     Also remember that the DB is incomplete and will never have all files in it: if we don't find matches in the db
+    we can go look for files in known backup locations add add them to the db and re-check status.
+    In practice this is less clear-cut than STATUS enum 
+        - how exhaustively do we want to search for matches? (synology drives + many 10TB disks that aren't indexed)
+        - do we checksum first and ask questions later? (slow)
+    * a medium/longer-term strategy may be to index all data disks by entering them into the db without checksum info to
+    make the db more complete
+    
     
 """
 

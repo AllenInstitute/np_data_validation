@@ -877,8 +877,8 @@ class DataValidationFile(abc.ABC):
             and (self.name.lower() == other.name.lower())
             and (self.path.as_posix().lower() != other.path.as_posix().lower())
             and (self.probe_dir == other.probe_dir)
-        ):  # valid copy, not self
-            return self.__class__.Match.VALID_COPY_SAME_NAME.value
+        ):  # valid copy, not self, same name
+            return self.__class__.Match.VALID_COPY.value
 
         elif (
             self.checksum
@@ -904,7 +904,7 @@ class DataValidationFile(abc.ABC):
                 and (self.checksum != other.checksum)
                 and (self.probe_dir == other.probe_dir)
             ):  # out-of-sync copy or incorrect data named as copy
-                return self.__class__.Match.UNSYNCED_DATA.value
+                return self.__class__.Match.COPY_UNSYNCED_DATA.value
 
             if (
                 (self.size != other.size)
@@ -913,14 +913,14 @@ class DataValidationFile(abc.ABC):
             ):  # out-of-sync copy or incorrect data named as copy
                 # plus checksum which needs updating
                 # (different size with same checksum isn't possible)
-                return self.__class__.Match.UNSYNCED_CHECKSUM.value
+                return self.__class__.Match.COPY_UNSYNCED_CHECKSUM.value
 
             if (
                 (self.size == other.size)
                 and (self.checksum != other.checksum)
                 and (self.probe_dir == other.probe_dir)
             ):  # possible data corruption, or checksum needs updating
-                return self.__class__.Match.UNSYNCED_OR_CORRUPT_DATA.value
+                return self.__class__.Match.COPY_UNSYNCED_OR_CORRUPT_DATA.value
 
         elif (
             self.checksum
@@ -1043,7 +1043,7 @@ class ShelveDataValidationDB(DataValidationDB):
                 or [
                     x
                     for x in db[key]
-                    if (file == x) == cls.DVFile.Match.SELF_NO_CHECKSUM
+                    if (file == x) == cls.DVFile.Match.SELF_MISSING_SELF
                 ]
             ):
                 print(f"skipped {file.session.folder}/{file.name} in Shelve database")
@@ -1124,7 +1124,7 @@ class MongoDataValidationDB(DataValidationDB):
         matches = cls.get_matches(file)
         match_type = [(file == match) for match in matches] if matches else []
         if (cls.DVFile.Match.SELF in match_type) or (
-            cls.DVFile.Match.SELF_NO_CHECKSUM in match_type
+            cls.DVFile.Match.SELF_MISSING_SELF in match_type
         ):
             # print(f'skipped {file.session.folder}/{file.name} in Mongo database')
             return
@@ -1538,7 +1538,6 @@ class DataValidationStatus:
             return self.file.npexp_backup
 
 
-
 class DataValidationFolder:
     """Represents a folder for which we want to checksum the contents and add to database,
     possibly deleting if a valid copy exists elswhere (evalutated using DVStatus)
@@ -1634,7 +1633,7 @@ class DataValidationFolder:
             # use the first file in the DVFolder to get this path
             file1 = self.file_paths[0]
             File1 = self.db.DVFile(path=file1.as_posix())
-            z_drive = File1.z_drive_path
+            z_drive = File1.z_drive_backup
             if z_drive:
                 self.add_backup_path(z_drive)
 
@@ -1802,7 +1801,7 @@ def test_data_validation_file():
     other = cls(path="//tmp2/tmp/test.txt", checksum=checksum, size=size)
     assert (
         self == other
-    ) == self.Match.VALID_COPY_SAME_NAME, "not recgonized: valid copy, not self"
+    ) == self.Match.VALID_COPY, "not recgonized: valid copy, not self"
 
     other = cls(path="//tmp2/tmp/test2.txt", checksum=checksum, size=size)
     assert (
@@ -1812,12 +1811,12 @@ def test_data_validation_file():
     other = cls(path="//tmp2/tmp/test.txt", checksum="87654321", size=20)
     assert (
         self == other
-    ) == self.Match.UNSYNCED_DATA, "not recognized: out-of-sync copy"
+    ) == self.Match.COPY_UNSYNCED_DATA, "not recognized: out-of-sync copy"
 
     other = cls(path="//tmp2/tmp/test.txt", checksum=checksum, size=20)
     assert (
         self == other
-    ) == self.Match.UNSYNCED_CHECKSUM, (
+    ) == self.Match.COPY_UNSYNCED_CHECKSUM, (
         "not recognized: out-of-sync copy with incorrect checksum"
     )
     # * note checksum is equal, which could occur if it hasn't been updated in db
@@ -1825,7 +1824,7 @@ def test_data_validation_file():
     other = cls(path="//tmp2/tmp/test.txt", checksum="87654321", size=size)
     assert (
         self == other
-    ) == self.Match.UNSYNCED_OR_CORRUPT_DATA, "not recognized: corrupt copy"
+    ) == self.Match.COPY_UNSYNCED_OR_CORRUPT_DATA, "not recognized: corrupt copy"
 
     other = cls(path="//tmp/tmp/test2.txt", checksum=checksum, size=20)
     assert (

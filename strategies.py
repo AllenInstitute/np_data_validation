@@ -184,6 +184,7 @@ def find_valid_backups(subject: dv.DataValidationFile, db: dv.DataValidationDB, 
     
     if invalid_backups and any(ext in invalid_backups[0].path.as_posix() for ext in ['.npx2','.dat']):
         subject.report(invalid_backups)
+        return
     
     matches = find_valid_copies_in_db(subject, db)
     

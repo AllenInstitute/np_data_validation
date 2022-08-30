@@ -285,7 +285,7 @@ class Session:
             self.mouse = self.folder.split("_")[1]
             self.date = self.folder.split("_")[2]
         elif "production" and "prod0" in str(path):
-            self.id = re.search(R"(?<=_session_)\d{10}", str(path)).group(0)
+            self.id = re.search(R"(?<=_session_)\d+", str(path)).group(0)
             lims_dg = dg.lims_data_getter(self.id)
             self.mouse = lims_dg.data_dict["external_specimen_name"]
             self.date = lims_dg.data_dict["datestring"]
@@ -302,7 +302,7 @@ class Session:
 
         # identify a session based on
         # [10-digit session ID]_[6-digit mouseID]_[6-digit date str]
-        session_reg_exp = R"[0-9]{8,}_[0-9]{6}_[0-9]{8}"
+        session_reg_exp = R"[0-9]{,}_[0-9]{6}_[0-9]{8}"
 
         session_folders = re.findall(session_reg_exp, str(path))
         if session_folders:

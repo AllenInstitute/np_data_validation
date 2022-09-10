@@ -495,6 +495,8 @@ class SessionFile:
     def npexp_backup(self) -> pathlib.Path:
         """Actual path to backup on npexp if it currently exists"""
         # unlike the properties below this function does negligible computation - no need to 'cache' it
+        if not self.session:
+            return None
         return self.get_npexp_path() if self.get_npexp_path().exists() else None
 
     def get_npexp_path(self) -> pathlib.Path:
@@ -690,11 +692,9 @@ class DataValidationFile(abc.ABC):
         self._path = pathlib.Path(path) if path else None
 
         # set read-only property, won't be hashed
-        self._probe_dir = (
-            probe_name if probe else None
-        )  # avoid checking 'if probe' since it could equal 0
-
-        if self.path and size is None:
+        self._probe_dir = probe_name if probe is not None else None # avoid checking 'if probe' since it could equal 0
+        
+        if self.path and size is None: 
             try:
                 size = os.path.getsize(self.path.as_posix())
             except:

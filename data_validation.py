@@ -467,6 +467,29 @@ class SessionFile:
             # if no parent with session string in name, we have a file with session
             # string in its filename, sitting in some unknown folder:
             return self.path.relative_to(self.parent)
+        
+    @property
+    def probe_dir(self) -> str:
+        # if a file lives in a probe folder (_probeA, or _probeABC) it may have the same name, size (and even checksum) as
+        # another file in a corresponding folder (_probeB, or _probeDEF) - the data are identical if all the above
+        # match, but it would still be preferable to keep track of these files separately -> this property indicates 
+        probe = re.search(R"(?<=_probe)_?(([A-F]+)|([0-5]{1}))", self.path.parent.as_posix())
+        if probe:
+            probe_name = probe[0]
+            # only possibile probe_names here are [A-F](any combination) or [0-5](single digit) 
+            if len(probe_name) == 1:
+                if ord('0') <= ord(probe_name) <= ord('5'):
+                    # convert single-digit probe numbers to letters
+                    probe_name = chr(ord('A') + int(probe_name))
+                    # controversial? mostly we store in probe dirs with letter, not digit, so
+                    # for finding 'the same filename in a different location' (ie a backup)
+                    # it probably makes sense to use the probe letter here to
+                    # facilitate comparisons
+                assert ord('A') <= ord(probe_name) <= ord('F'), logging.error("{} is not a valid probe name: must include a single digit [0-5], or some combination of capital letters [A-F]".format(probe_name))
+            else:
+                assert all(letter in "ABCDEF" for letter in probe_name), logging.error("{} is not a valid probe name: must include a single digit [0-5], or some combination of capital letters [A-F]".format(probe_name))
+            return probe_name
+        return None
     
     @property
     def npexp_backup(self) -> pathlib.Path:

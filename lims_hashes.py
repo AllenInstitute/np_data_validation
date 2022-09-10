@@ -84,6 +84,9 @@ def delete_file_if_lims_hash_matches(
     """Compare the hash of a file to the hash of the same file in LIMS. If they match,
     delete the file and return the file size in bytes."""
     file = pathlib.Path(file)
+    if not file.is_file():
+        print(f"{file.as_posix()} is not a file or does not exist")
+        return 0
     if not lims_file:
         lims_file = dv.SessionFile(file).lims_path
     if not lims_file:

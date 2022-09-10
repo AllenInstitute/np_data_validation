@@ -504,7 +504,9 @@ class SessionFile:
     @property
     def lims_backup(self) -> pathlib.Path:
         """Actual path to backup on LIMS if it currently exists"""
-        # * this should eventually map filename to LIMS wkft and look up the location
+        if not self.session or not self.session.lims_path:
+            return None
+
         if hasattr(self, "_lims_backup"):
             return self._lims_backup if self._lims_backup.exists() else None
         else:
@@ -515,24 +517,22 @@ class SessionFile:
         """Path to backup on Lims (which must exist for this current method to work)"""
         if not self.session.lims_path:
             return None
-        if self.probe_dir and len(self.probe_dir) == 1:
-            # sorted single probe folders have different names on lims
-            paths = [
-                path
-                for path in self.session.lims_path.rglob(
-                    "/".join(self.session_relative_path.parts[1:])
-                )
-            ]
-        else:
-            paths = [
-                path
-                for path in self.session.lims_path.rglob(self.relative_path.as_posix())
-            ]
-        if paths:
-            return paths[
-                -1
-            ]  # return the most recent entry - would be preferable to find the actual entry in lims db (may be multiple on disk), or check filesize here
-
+        
+        # for files in lims 'ecephys_session_XXXX' folders, which aren't in 'job_id' sub-folders:
+        if (self.session.lims_path / self.root_relative_path).is_file():
+            return self.session.lims_path / self.root_relative_path
+        
+        # for files in 'job_id' folders we'll need to glob and take the most recent file
+        # version (assuming this == highest job id)
+        pattern = f"*{self.root_relative_path.as_posix()}"
+        matches = [m.as_posix() for m in self.session.lims_path.rglob(pattern)] # convert to strings for sorting
+        if matches and self.probe_dir:
+            matches = [m for m in matches if f'_probe{self.probe_dir}' in m]
+        if not matches:
+            return None
+        return pathlib.Path(sorted(matches)[-1])
+        
+        
     @property
     def z_drive_backup(self) -> pathlib.Path:
         """Path to backup on 'z' drive if it currently exists.

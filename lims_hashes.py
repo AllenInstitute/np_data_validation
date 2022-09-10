@@ -1,6 +1,7 @@
 import argparse
 import datetime
 import hashlib
+import itertools
 import json
 import logging
 import pathlib
@@ -106,7 +107,9 @@ def delete_file_if_lims_hash_matches(
         print("no ecephys_session_ dir found in parents of ", lims_file)
         return 0
 
-    for upload_input_json in lims_dir.rglob("*_UPLOAD_QUEUE_*_input.json"):
+    for upload_input_json in itertools.chain(
+            lims_dir.rglob("*_UPLOAD_QUEUE_*_input.json"), 
+            lims_dir.rglob("*EUR_QUEUE_*_input.json")):
 
         # get hash function that was used by lims
         hasher_key = hash_type_from_ecephys_upload_input_json(upload_input_json)

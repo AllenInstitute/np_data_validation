@@ -446,7 +446,28 @@ class SessionFile:
     def relative_path(self) -> pathlib.Path:
         """filepath relative to a session folder"""
         return pathlib.Path(self.session_relative_path.relative_to(self.session.folder))
-
+    
+    @property
+    def root_relative_path(self) -> pathlib.Path:
+        """Filepath relative to the first parent with session string in name.
+        
+        #!watch out: Different meaning of 'root' to 'root_path' above
+        
+        This property will be most useful when looking for files in lims ecephys_session_XX
+        folders,csince the 'first parent with session string in name'cis often renamed in lims: 
+        e.g. '123456789_366122_20220618_probeA_sorted' becomes 'job-id/probe-id_probeA'
+        - filepaths relative to the renamed folder should be preserved, so we should be
+        able to glob for them using this property.
+        """
+        # TODO update root_path to use the same meaning of 'root'
+        for parent in self.path.parents:
+            if self.session.folder in parent.parts[-1]:
+                return self.path.relative_to(parent)
+        else:
+            # if no parent with session string in name, we have a file with session
+            # string in its filename, sitting in some unknown folder:
+            return self.path.relative_to(self.parent)
+    
     @property
     def npexp_backup(self) -> pathlib.Path:
         """Actual path to backup on npexp if it currently exists"""

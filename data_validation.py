@@ -446,15 +446,15 @@ class SessionFile:
     def relative_path(self) -> pathlib.Path:
         """filepath relative to a session folder"""
         return pathlib.Path(self.session_relative_path.relative_to(self.session.folder))
-    
+
     @property
     def root_relative_path(self) -> pathlib.Path:
         """Filepath relative to the first parent with session string in name.
-        
+
         #!watch out: Different meaning of 'root' to 'root_path' above
-        
+
         This property will be most useful when looking for files in lims ecephys_session_XX
-        folders,csince the 'first parent with session string in name'cis often renamed in lims: 
+        folders, since the 'first parent with session string in name'cis often renamed in lims:
         e.g. '123456789_366122_20220618_probeA_sorted' becomes 'job-id/probe-id_probeA'
         - filepaths relative to the renamed folder should be preserved, so we should be
         able to glob for them using this property.
@@ -467,30 +467,40 @@ class SessionFile:
             # if no parent with session string in name, we have a file with session
             # string in its filename, sitting in some unknown folder:
             return self.path.relative_to(self.parent)
-        
+
     @property
     def probe_dir(self) -> str:
         # if a file lives in a probe folder (_probeA, or _probeABC) it may have the same name, size (and even checksum) as
         # another file in a corresponding folder (_probeB, or _probeDEF) - the data are identical if all the above
-        # match, but it would still be preferable to keep track of these files separately -> this property indicates 
-        probe = re.search(R"(?<=_probe)_?(([A-F]+)|([0-5]{1}))", self.path.parent.as_posix())
+        # match, but it would still be preferable to keep track of these files separately -> this property indicates
+        probe = re.search(
+            R"(?<=_probe)_?(([A-F]+)|([0-5]{1}))", self.path.parent.as_posix()
+        )
         if probe:
             probe_name = probe[0]
-            # only possibile probe_names here are [A-F](any combination) or [0-5](single digit) 
+            # only possibile probe_names here are [A-F](any combination) or [0-5](single digit)
             if len(probe_name) == 1:
-                if ord('0') <= ord(probe_name) <= ord('5'):
+                if ord("0") <= ord(probe_name) <= ord("5"):
                     # convert single-digit probe numbers to letters
-                    probe_name = chr(ord('A') + int(probe_name))
+                    probe_name = chr(ord("A") + int(probe_name))
                     # controversial? mostly we store in probe dirs with letter, not digit, so
                     # for finding 'the same filename in a different location' (ie a backup)
                     # it probably makes sense to use the probe letter here to
                     # facilitate comparisons
-                assert ord('A') <= ord(probe_name) <= ord('F'), logging.error("{} is not a valid probe name: must include a single digit [0-5], or some combination of capital letters [A-F]".format(probe_name))
+                assert ord("A") <= ord(probe_name) <= ord("F"), logging.error(
+                    "{} is not a valid probe name: must include a single digit [0-5], or some combination of capital letters [A-F]".format(
+                        probe_name
+                    )
+                )
             else:
-                assert all(letter in "ABCDEF" for letter in probe_name), logging.error("{} is not a valid probe name: must include a single digit [0-5], or some combination of capital letters [A-F]".format(probe_name))
+                assert all(letter in "ABCDEF" for letter in probe_name), logging.error(
+                    "{} is not a valid probe name: must include a single digit [0-5], or some combination of capital letters [A-F]".format(
+                        probe_name
+                    )
+                )
             return probe_name
         return None
-    
+
     @property
     def npexp_backup(self) -> pathlib.Path:
         """Actual path to backup on npexp if it currently exists"""
@@ -519,22 +529,23 @@ class SessionFile:
         """Path to backup on Lims (which must exist for this current method to work)"""
         if not self.session.lims_path:
             return None
-        
+
         # for files in lims 'ecephys_session_XXXX' folders, which aren't in 'job_id' sub-folders:
         if (self.session.lims_path / self.root_relative_path).is_file():
             return self.session.lims_path / self.root_relative_path
-        
+
         # for files in 'job_id' folders we'll need to glob and take the most recent file
         # version (assuming this == highest job id)
         pattern = f"*{self.root_relative_path.as_posix()}"
-        matches = [m.as_posix() for m in self.session.lims_path.rglob(pattern)] # convert to strings for sorting
+        matches = [
+            m.as_posix() for m in self.session.lims_path.rglob(pattern)
+        ]  # convert to strings for sorting
         if matches and self.probe_dir:
-            matches = [m for m in matches if f'_probe{self.probe_dir}' in m]
+            matches = [m for m in matches if f"_probe{self.probe_dir}" in m]
         if not matches:
             return None
         return pathlib.Path(sorted(matches)[-1])
-        
-        
+
     @property
     def z_drive_backup(self) -> pathlib.Path:
         """Path to backup on 'z' drive if it currently exists.
@@ -692,9 +703,11 @@ class DataValidationFile(abc.ABC):
         self._path = pathlib.Path(path) if path else None
 
         # set read-only property, won't be hashed
-        self._probe_dir = probe_name if probe is not None else None # avoid checking 'if probe' since it could equal 0
-        
-        if self.path and size is None: 
+        self._probe_dir = (
+            probe_name if probe is not None else None
+        )  # avoid checking 'if probe' since it could equal 0
+
+        if self.path and size is None:
             try:
                 size = os.path.getsize(self.path.as_posix())
             except:

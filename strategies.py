@@ -218,21 +218,21 @@ def find_valid_backups(
     if not backup_paths:
         backup_paths = set()
         if (
-            subject.session.lims_path
+            subject.lims_backup
             and subject.session.lims_path.as_posix() not in subject.path.as_posix()
         ):
-            backup_paths.add(subject.session.lims_path.as_posix())
+            backup_paths.add(subject.lims_backup.as_posix())
         if (
-            subject.npexp_path
+            subject.npexp_backup
             and subject.session.npexp_path.as_posix() not in subject.path.as_posix()
         ):
-            backup_paths.add(subject.session.npexp_path.as_posix())
+            backup_paths.add(subject.npexp_backup.as_posix())
         if (
             not backup_paths
-            and subject.z_drive_path
+            and subject.z_drive_backup
             and subject.z_drive_path.as_posix() not in subject.path.as_posix()
         ):
-            backup_paths.add(subject.z_drive_path.as_posix())
+            backup_paths.add(subject.z_drive_backup.as_posix())
 
     # TODO fix order here so lims folder is first, npexp second: converting to list seems to reorder
     else:

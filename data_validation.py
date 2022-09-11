@@ -988,11 +988,6 @@ class DataValidationDB(abc.ABC):
 
     """
 
-    # * methods:
-    # * add_file(file: DataValidationFile)
-    # * get_matches(file: DataValidationFile) -> List[DataValidationFile]
-    #   the file above can be compared with entries in the returned list for further details
-
     DVFile: DataValidationFile = NotImplemented
 
     # ? both of these could be staticmethods
@@ -1116,19 +1111,38 @@ class MongoDataValidationDB(DataValidationDB):
         size: int = None,
         checksum: str = None,
     ):
-        """add an entry to the database"""
+        """Add an entry to the database"""
         if not file:
             file = cls.DVFile(path=path, size=size, checksum=checksum)
 
-        # check an identical entry doesn't exist already
+        # check the database for similar entries
         matches = cls.get_matches(file)
         match_type = [(file == match) for match in matches] if matches else []
+
+        # if an entry matching the file already exists, skip it
         if (cls.DVFile.Match.SELF in match_type) or (
             cls.DVFile.Match.SELF_MISSING_SELF in match_type
         ):
-            # print(f'skipped {file.session.folder}/{file.name} in Mongo database')
+            logging.debug(
+                f"skipped {file.session.folder}/{file.name} in Mongo database"
+            )
             return
 
+        # if an entry for the same file exists, but doesn't have a checksum or is out
+        # of date, replace it
+        if (cls.DVFile.Match.SELF_MISSING_OTHER in match_type) or (
+            cls.DVFile.Match.SELF_PREVIOUS_VERSION in match_type
+        ):
+
+            cls.update_entry(file)
+            entries = list(
+                cls.db.find(
+                    {
+                        "path": file.path.as_posix(),
+                    }
+                )
+            )
+        # otherwise, continue to add the file to the database
         cls.db.insert_one(
             {
                 "session_id": file.session.id,

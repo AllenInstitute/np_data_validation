@@ -2109,14 +2109,4 @@ def clear_dirs():
 
 
 if __name__ == "__main__":
-    # clear_dirs()
-
-    p = "/allen/programs/mindscope/workgroups/np-exp/1127061307_569156_20210908/1127061307_569156_20210908_probeDEF/recording_slot3_3.npx2"
-    x = CRC32DataValidationFile(path=p)
-    xx = strategies.exchange_if_checksum_in_db(x, MongoDataValidationDB)
-    strategies.delete_if_valid_backup_in_db(x, MongoDataValidationDB)
-    o = "/allen/programs/braintv/production/visualbehavior/prod0/specimen_1089868535/ecephys_session_1127061307/1127061307_569156_20210908_probeDEF/recording_slot3_3.npx2"
-    y = CRC32DataValidationFile(path=o)
-
-    m = MongoDataValidationDB.get_matches(xx)
-    print(m)
+    clear_dirs()

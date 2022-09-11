@@ -1273,7 +1273,7 @@ class MongoDataValidationDB(DataValidationDB):
             cls.db.find(
                 {
                     "session_id": file.session.id,
-                    "type": file.DVFile.checksum_name,
+                    "type": file.checksum_name,
                 }
             )
         )

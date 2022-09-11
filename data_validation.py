@@ -104,6 +104,7 @@ import abc
 import configparser
 import datetime
 import enum
+import hashlib
 import itertools
 import json
 import logging
@@ -235,6 +236,22 @@ def test_crc32_function(func, *args, **kwargs):
     with open(os.path.join(temp), "wb") as f:
         f.write(b"foo")
     assert func(temp) == "8C736521", "checksum function incorrect"
+
+def test_sha256_function(func, *args, **kwargs):
+    temp = os.path.join(
+        tempfile.gettempdir(), "checksum_test_" + str(random.randint(0, 1000000))
+    )
+    with open(os.path.join(temp), 'wb') as f:
+        f.write(b'foo')
+    assert func(temp) == "2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae", "checksum function incorrect"
+
+def test_sha3_256_function(func, *args, **kwargs):
+    temp = os.path.join(
+        tempfile.gettempdir(), "checksum_test_" + str(random.randint(0, 1000000))
+    )
+    with open(os.path.join(temp), 'wb') as f:
+        f.write(b'foo')
+    assert func(temp) == "76d3bc41c9f588f7fcd0d5bf4718f8f84b1c41b20882703100b9eb9413807c01", "checksum function incorrect"
 
 
 def valid_crc32_checksum(value: str) -> bool:
@@ -1008,8 +1025,7 @@ class DataValidationFile(abc.ABC):
 
 class CRC32DataValidationFile(DataValidationFile, SessionFile):
 
-    # DB: DataValidationDB = CRC32JsonDataValidationDB()
-    checksum_threshold: int = 0  # don't generate checksum for any files by default
+    checksum_threshold: int = 0 # don't generate checksum for any files by default
     checksum_name: str = "crc32"
     # used to identify the checksum type in the databse, e.g. a key in a dict
 
@@ -1020,15 +1036,45 @@ class CRC32DataValidationFile(DataValidationFile, SessionFile):
     # a test Callable that confirms checksum_generator is working as expected, accept a function, return nothing (raise exception if test fails)
 
     checksum_validate: Callable[[str], bool] = valid_crc32_checksum
-
     # a function that accepts a string and validates it conforms to the checksum format, returning boolean
 
     def __init__(self, path: str = None, checksum: str = None, size: int = None):
         # if the path doesn't contain a session_id, this will raise an error:
-        # try:
         DataValidationFile.__init__(self, path=path, checksum=checksum, size=size)
         SessionFile.__init__(self, path)
 
+def valid_sha256_checksum(value: str) -> bool:
+    """ validate crc32 checksum """
+    if isinstance(value, str) and len(value) == 64 \
+        and all(c in '0123456789abcdef' for c in value.lower()):
+        return True
+    return False
+
+class SHA256DataValidationFile(DataValidationFile, SessionFile):
+
+    checksum_threshold: int = 0 # don't generate checksum for any files by default
+    checksum_name: str = "sha256"
+    checksum_generator: Callable[[str], str] = hashlib.sha256
+    checksum_test: Callable[[Callable], None] = test_sha256_function        
+    checksum_validate: Callable[[str], bool] = valid_sha256_checksum
+
+    def __init__(self, path: str = None, checksum: str = None, size: int = None):
+        DataValidationFile.__init__(self, path=path, checksum=checksum, size=size)
+        # if the path doesn't contain a session_id, this will raise an error:
+        SessionFile.__init__(self, path)
+        
+class SHA3_256DataValidationFile(DataValidationFile, SessionFile):
+
+    checksum_threshold: int = 0 # don't generate checksum for any files by default
+    checksum_name: str = "sha3_256"
+    checksum_generator: Callable[[str], str] = hashlib.sha3_256
+    checksum_test: Callable[[Callable], None] = test_sha3_256_function
+    checksum_validate: Callable[[str], bool] = valid_sha256_checksum # note that this is the same as the SHA256 checksum validation function
+
+    def __init__(self, path: str = None, checksum: str = None, size: int = None):
+        DataValidationFile.__init__(self, path=path, checksum=checksum, size=size)
+        # if the path doesn't contain a session_id, this will raise an error:
+        SessionFile.__init__(self, path)
 
 class DataValidationDB(abc.ABC):
     """Represents a database of files with validation metadata
@@ -1155,8 +1201,7 @@ class MongoDataValidationDB(DataValidationDB):
     """
     A database that stores validation data in mongodb
     """
-
-    DVFile: DataValidationFile = CRC32DataValidationFile
+    DVFile: DataValidationFile = CRC32DataValidationFile # default
     db_address = "mongodb://10.128.50.77:27017/"
     db = pymongo.MongoClient(db_address).prod.snapshots
 
@@ -1168,8 +1213,8 @@ class MongoDataValidationDB(DataValidationDB):
         size: int = None,
         checksum: str = None,
     ):
-        """Add an entry to the database"""
-        if not file:
+        """Add an entry to the database """
+        if not file: # make a new object with the default DVFile class
             file = cls.DVFile(path=path, size=size, checksum=checksum)
 
         # check the database for similar entries
@@ -1177,8 +1222,8 @@ class MongoDataValidationDB(DataValidationDB):
         match_type = [(file == match) for match in matches] if matches else []
 
         # if an entry matching the file already exists, skip it
-        if (cls.DVFile.Match.SELF in match_type) or (
-            cls.DVFile.Match.SELF_MISSING_SELF in match_type
+        if (file.Match.SELF in match_type) or (
+            file.Match.SELF_MISSING_SELF in match_type
         ):
             logging.debug(
                 f"skipped {file.session.folder}/{file.name} in Mongo database"
@@ -1221,13 +1266,14 @@ class MongoDataValidationDB(DataValidationDB):
         match: Union[int, Type[enum.IntEnum]] = None,
     ) -> List[DataValidationFile]:  # , Optional[List[int]]:
         """search database for entries that match any of the given arguments"""
-        if not file:
+        if not file: # make a new object with the default DVFile class
             file = cls.DVFile(path=path, size=size, checksum=checksum)
 
         entries = list(
             cls.db.find(
                 {
                     "session_id": file.session.id,
+                    "type": file.DVFile.checksum_name,
                 }
             )
         )
@@ -1236,7 +1282,7 @@ class MongoDataValidationDB(DataValidationDB):
             return None
 
         matches = set(
-            cls.DVFile(
+            file.__class__(
                 path=entry["path"],
                 checksum=entry["checksum"],
                 size=entry["size"],
@@ -1246,8 +1292,8 @@ class MongoDataValidationDB(DataValidationDB):
 
         def filter_on_match_type(match_type: int) -> List[DataValidationFile]:
             if isinstance(match_type, int) and (
-                match_type in [x.value for x in cls.DVFile.Match]
-                or match_type in [x for x in cls.DVFile.Match]
+                match_type in [x.value for x in file.Match]
+                or match_type in [x for x in file.Match]
             ):
                 return [o for o in matches if (file == o) == match_type > 0]
 

@@ -66,7 +66,7 @@ def generate_checksum(
     Generate a checksum for a file and add to database.
     """
     checksum = subject.generate_checksum(subject.path.as_posix(), subject.size)
-    new_file = db.DVFile(
+    new_file = subject.__class__(
         path=subject.path.as_posix(), size=subject.size, checksum=checksum
     )
     db.add_file(new_file)
@@ -279,10 +279,10 @@ def find_valid_backups(
                 continue
             try_path = try_backup / subject.relative_path
             if try_path.exists():
-                candidate = generate_checksum(db.DVFile(path=try_path.as_posix()), db)
+                candidate = generate_checksum(subject.__class__(path=try_path.as_posix()), db)
                 if (subject == candidate) in [
-                    db.DVFile.Match.VALID_COPY_RENAMED,
-                    db.DVFile.Match.VALID_COPY,
+                    subject.Match.VALID_COPY_RENAMED,
+                    subject.Match.VALID_COPY,
                 ]:
                     backups.add(candidate)
                     # could continue here and check all backup paths
@@ -299,11 +299,11 @@ def find_valid_backups(
                 if d.is_file() and d.stat().st_size == subject.size:
 
                     candidate = generate_checksum(
-                        db.DVFile(path=d.path, size=subject.size), db
+                        subject.__class__(path=d.path, size=subject.size), db
                     )
                     if (subject == candidate) in [
-                        db.DVFile.Match.VALID_COPY_RENAMED,
-                        db.DVFile.Match.VALID_COPY,
+                        subject.Match.VALID_COPY_RENAMED,
+                        subject.Match.VALID_COPY,
                     ]:
                         backups.add(candidate)
                         # could continue here and check all backup paths

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-R"""Tools for validating neuropixels data files from ecephys recording sessions.
+r"""Tools for validating neuropixels data files from ecephys recording sessions.
 
     Some design notes:
     - hash + filesize uniquely identify data, regardless of path 
@@ -116,6 +116,7 @@ import pprint
 import random
 import re
 import shelve
+import socket
 import sys
 import tempfile
 import threading
@@ -136,9 +137,7 @@ import strategies  # for interacting with database
 log = logging.getLogger()
 pathlib.Path("./logs").mkdir(parents=True, exist_ok=True)
 logHandler = logging.handlers.RotatingFileHandler(
-    "./logs/clear_dirs.log",
-    maxBytes=10000,
-    backupCount=10,
+    "./logs/clear_dirs.log", maxBytes=10000, backupCount=10,
 )
 logHandler.formatter = logging.Formatter(
     "%(asctime)s %(message)s", datefmt="%Y-%m-%d %H:%M"
@@ -237,21 +236,27 @@ def test_crc32_function(func, *args, **kwargs):
         f.write(b"foo")
     assert func(temp) == "8C736521", "checksum function incorrect"
 
+
 def test_sha256_function(func, *args, **kwargs):
     temp = os.path.join(
         tempfile.gettempdir(), "checksum_test_" + str(random.randint(0, 1000000))
     )
-    with open(os.path.join(temp), 'wb') as f:
-        f.write(b'foo')
-    assert func(temp) == "2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae", "checksum function incorrect"
+    with open(os.path.join(temp), "wb") as f:
+        f.write(b"foo")
+    assert (
+        func(temp) == "2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae"
+    ), "checksum function incorrect"
+
 
 def test_sha3_256_function(func, *args, **kwargs):
     temp = os.path.join(
         tempfile.gettempdir(), "checksum_test_" + str(random.randint(0, 1000000))
     )
-    with open(os.path.join(temp), 'wb') as f:
-        f.write(b'foo')
-    assert func(temp) == "76d3bc41c9f588f7fcd0d5bf4718f8f84b1c41b20882703100b9eb9413807c01", "checksum function incorrect"
+    with open(os.path.join(temp), "wb") as f:
+        f.write(b"foo")
+    assert (
+        func(temp) == "76d3bc41c9f588f7fcd0d5bf4718f8f84b1c41b20882703100b9eb9413807c01"
+    ), "checksum function incorrect"
 
 
 def valid_crc32_checksum(value: str) -> bool:
@@ -285,7 +290,7 @@ class Session:
     mouse = None
     date = None
 
-    NPEXP_ROOT = pathlib.Path(R"//allen/programs/mindscope/workgroups/np-exp")
+    NPEXP_ROOT = pathlib.Path(r"//allen/programs/mindscope/workgroups/np-exp")
 
     def __init__(self, path: str):
         if not isinstance(path, (str, pathlib.Path)):
@@ -302,7 +307,7 @@ class Session:
             self.mouse = self.folder.split("_")[1]
             self.date = self.folder.split("_")[2]
         elif "production" and "prod0" in str(path):
-            self.id = re.search(R"(?<=_session_)\d+", str(path)).group(0)
+            self.id = re.search(r"(?<=_session_)\d+", str(path)).group(0)
             lims_dg = dg.lims_data_getter(self.id)
             self.mouse = lims_dg.data_dict["external_specimen_name"]
             self.date = lims_dg.data_dict["datestring"]
@@ -319,7 +324,7 @@ class Session:
 
         # identify a session based on
         # [10-digit session ID]_[6-digit mouseID]_[6-digit date str]
-        session_reg_exp = R"[0-9]{,}_[0-9]{6}_[0-9]{8}"
+        session_reg_exp = r"[0-9]{,}_[0-9]{6}_[0-9]{8}"
 
         session_folders = re.findall(session_reg_exp, str(path))
         if session_folders:
@@ -491,7 +496,7 @@ class SessionFile:
         # another file in a corresponding folder (_probeB, or _probeDEF) - the data are identical if all the above
         # match, but it would still be preferable to keep track of these files separately -> this property indicates
         probe = re.search(
-            R"(?<=_probe)_?(([A-F]+)|([0-5]{1}))", self.path.parent.as_posix()
+            r"(?<=_probe)_?(([A-F]+)|([0-5]{1}))", self.path.parent.as_posix()
         )
         if probe:
             probe_name = probe[0]
@@ -518,13 +523,20 @@ class SessionFile:
             return probe_name
         return None
 
+    # backup paths below are only returned if they exist and are not the same as the
+    # current file path (ie. if the file is not already in a backup location) -------------- #
+
     @property
     def npexp_backup(self) -> pathlib.Path:
         """Actual path to backup on npexp if it currently exists"""
         # unlike the properties below this function does negligible computation - no need to 'cache' it
-        if not self.session:
-            return None
-        return self.get_npexp_path() if self.get_npexp_path().exists() else None
+        if (
+            self.get_npexp_path()
+            and self.get_npexp_path().exists()
+            and self.get_npexp_path() != self.path
+        ):
+            return self.get_npexp_path()
+        return None
 
     def get_npexp_path(self) -> pathlib.Path:
         """Presumed path to file on npexp (may not exist)"""
@@ -533,14 +545,15 @@ class SessionFile:
     @property
     def lims_backup(self) -> pathlib.Path:
         """Actual path to backup on LIMS if it currently exists"""
-        if not self.session or not self.session.lims_path:
-            return None
-
-        if hasattr(self, "_lims_backup"):
-            return self._lims_backup if self._lims_backup.exists() else None
-        else:
+        if not hasattr(self, "_lims_backup"):
             self._lims_backup = self.get_lims_path()
-            return self.lims_backup
+        if (
+            self._lims_backup
+            and self._lims_backup.exists()
+            and self._lims_backup.as_posix() != self.path.as_posix()
+        ):
+            return self._lims_backup
+        return None
 
     def get_lims_path(self) -> pathlib.Path:
         """Path to backup on Lims (which must exist for this current method to work)"""
@@ -569,14 +582,21 @@ class SessionFile:
 
         This property getter just prevents repeat calls to find the path
         """
-        if hasattr(self, "_z_drive_backup"):
-            return self._z_drive_backup if self._z_drive_backup.exists() else None
-        else:
-            self._z_drive_backup = self.get_z_drive_backup()
-            return self.z_drive_backup  # public property that checks existence
+        if not hasattr(self, "_z_drive_backup"):
+            self._z_drive_backup = self.get_z_drive_path()
+        if (
+            self._z_drive_backup
+            and self._z_drive_backup.exists()
+            and self._z_drive_backup.as_posix() != self.path.as_posix()
+            and "neuropixels_data" not in self.path.parts
+        ):
+            return self._z_drive_backup
+        return None
 
     def get_z_drive_path(self) -> pathlib.Path:
         """Path to possible backup on 'z' drive (might not exist)"""
+        # TODO add session method for getting z drive, using rigID from lims
+        # then use whichever z drive exists (original vs current)
         running_on_rig = nptk.COMP_ID if "NP." in nptk.COMP_ID else None
         local_path = str(self.path)[0] not in ["/", "\\"]
         rig_from_path = nptk.Rig.rig_from_path(self.path.as_posix())
@@ -586,18 +606,18 @@ class SessionFile:
             sync_path = nptk.Rig.Sync.path
         elif rig_from_path:
             rig_idx = nptk.Rig.rig_str_to_int(rig_from_path)
-            sync_path = R"\\" + nptk.ConfigHTTP.get_np_computers(rig_idx, "sync")
+            sync_path = "//" + nptk.ConfigHTTP.get_np_computers(rig_idx, "sync")
         else:
             sync_path = None
-
-        if sync_path and sync_path not in self.path.as_posix():
-            # add the z drive/neuropix data folder for this rig
-            return (
+        # the z drive/neuropix data folder for this rig
+        return (
+            (
                 pathlib.Path(sync_path, "neuropixels_data", self.session.folder)
                 / self.session_relative_path
             )
-        else:
-            return None
+            if sync_path
+            else None
+        )
 
     def __lt__(self, other):
         if self.session.id == other.session.id:
@@ -615,12 +635,9 @@ class DataValidationFile(abc.ABC):
 
     """
 
-    # TODO hash refers to path, size, checksum: add setters that freeze these attributes and set only during init
-    # as a result it won't be possible to add checksums - a new instance will have to be created with the checksum
+    # TODO add hostname property when path is local
 
-    # DB: DataValidationDB = NotImplemented
-
-    checksum_threshold: int = 50 * 1024**2
+    checksum_threshold: int = 50 * 1024 ** 2
     # filesizes below this will have checksums auto-generated on init
 
     checksum_name: str = None
@@ -693,7 +710,7 @@ class DataValidationFile(abc.ABC):
             # another file in a corresponding folder (_probeB, or _probeDEF) - the data are identical if all the above
             # match, but it would still be preferable to keep track of these files separately -> this property indicates
             probe = re.search(
-                R"(?<=_probe)_?(([A-F]+)|([0-5]{1}))", path.split(self.name)[0]
+                r"(?<=_probe)_?(([A-F]+)|([0-5]{1}))", path.split(self.name)[0]
             )
             if probe:
                 probe_name = probe[0]
@@ -1025,7 +1042,7 @@ class DataValidationFile(abc.ABC):
 
 class CRC32DataValidationFile(DataValidationFile, SessionFile):
 
-    checksum_threshold: int = 0 # don't generate checksum for any files by default
+    checksum_threshold: int = 0  # don't generate checksum for any files by default
     checksum_name: str = "crc32"
     # used to identify the checksum type in the databse, e.g. a key in a dict
 
@@ -1043,38 +1060,47 @@ class CRC32DataValidationFile(DataValidationFile, SessionFile):
         DataValidationFile.__init__(self, path=path, checksum=checksum, size=size)
         SessionFile.__init__(self, path)
 
+
 def valid_sha256_checksum(value: str) -> bool:
     """ validate crc32 checksum """
-    if isinstance(value, str) and len(value) == 64 \
-        and all(c in '0123456789abcdef' for c in value.lower()):
+    if (
+        isinstance(value, str)
+        and len(value) == 64
+        and all(c in "0123456789abcdef" for c in value.lower())
+    ):
         return True
     return False
 
+
 class SHA256DataValidationFile(DataValidationFile, SessionFile):
 
-    checksum_threshold: int = 0 # don't generate checksum for any files by default
+    checksum_threshold: int = 0  # don't generate checksum for any files by default
     checksum_name: str = "sha256"
     checksum_generator: Callable[[str], str] = hashlib.sha256
-    checksum_test: Callable[[Callable], None] = test_sha256_function        
+    checksum_test: Callable[[Callable], None] = test_sha256_function
     checksum_validate: Callable[[str], bool] = valid_sha256_checksum
 
     def __init__(self, path: str = None, checksum: str = None, size: int = None):
         DataValidationFile.__init__(self, path=path, checksum=checksum, size=size)
         # if the path doesn't contain a session_id, this will raise an error:
         SessionFile.__init__(self, path)
-        
+
+
 class SHA3_256DataValidationFile(DataValidationFile, SessionFile):
 
-    checksum_threshold: int = 0 # don't generate checksum for any files by default
+    checksum_threshold: int = 0  # don't generate checksum for any files by default
     checksum_name: str = "sha3_256"
     checksum_generator: Callable[[str], str] = hashlib.sha3_256
     checksum_test: Callable[[Callable], None] = test_sha3_256_function
-    checksum_validate: Callable[[str], bool] = valid_sha256_checksum # note that this is the same as the SHA256 checksum validation function
+    checksum_validate: Callable[
+        [str], bool
+    ] = valid_sha256_checksum  # note that this is the same as the SHA256 checksum validation function
 
     def __init__(self, path: str = None, checksum: str = None, size: int = None):
         DataValidationFile.__init__(self, path=path, checksum=checksum, size=size)
         # if the path doesn't contain a session_id, this will raise an error:
         SessionFile.__init__(self, path)
+
 
 class DataValidationDB(abc.ABC):
     """Represents a database of files with validation metadata
@@ -1185,13 +1211,15 @@ class ShelveDataValidationDB(DataValidationDB):
                 or match in [x for x in cls.DVFile.Match]
             )
         ):
-            return [o for o in matches if (file == o) == match > 0], [
-                (file == o) for o in matches if (file == o) == match > 0
-            ]
+            return (
+                [o for o in matches if (file == o) == match > 0],
+                [(file == o) for o in matches if (file == o) == match > 0],
+            )
         else:
-            return [o for o in matches if (file == o) > 0], [
-                (file == o) for o in matches if (file == o) > 0
-            ]
+            return (
+                [o for o in matches if (file == o) > 0],
+                [(file == o) for o in matches if (file == o) > 0],
+            )
 
     # def __del__(self):
     #     self.db.close()
@@ -1201,7 +1229,8 @@ class MongoDataValidationDB(DataValidationDB):
     """
     A database that stores validation data in mongodb
     """
-    DVFile: DataValidationFile = CRC32DataValidationFile # default
+
+    DVFile: DataValidationFile = CRC32DataValidationFile  # default
     db_address = "mongodb://10.128.50.77:27017/"
     db = pymongo.MongoClient(db_address).prod.snapshots
 
@@ -1214,7 +1243,7 @@ class MongoDataValidationDB(DataValidationDB):
         checksum: str = None,
     ):
         """Add an entry to the database """
-        if not file: # make a new object with the default DVFile class
+        if not file:  # make a new object with the default DVFile class
             file = cls.DVFile(path=path, size=size, checksum=checksum)
 
         # check the database for similar entries
@@ -1224,7 +1253,7 @@ class MongoDataValidationDB(DataValidationDB):
         # if we have no checksum we won't enter in the database
         if not file.checksum:
             return
-        
+
         # if an entry matching the file already exists, skip it
         if (file.Match.SELF in match_type) or (
             file.Match.SELF_MISSING_SELF in match_type
@@ -1234,36 +1263,23 @@ class MongoDataValidationDB(DataValidationDB):
             )
             return
 
-        # if an entry for the same file exists, but doesn't have a checksum or is out
-        # of date, replace it
-        if (file.Match.SELF_MISSING_OTHER in match_type) or (
-            file.Match.SELF_PREVIOUS_VERSION in match_type
-        ):
-            # TODO replace an outdated entry in the database
-            logging.debug(
-                f"skipped {file.session.folder}/{file.name} in Mongo database"
-            )
-            return
-            # cls.update_entry(file)
-            # entries = list(
-            #     cls.db.find(
-            #         {
-            #             "path": file.path.as_posix(),
-            #         }
-            #     )
-            # )
-            
-        # otherwise, continue to add the file to the database
-        cls.db.insert_one(
-            {
-                "session_id": file.session.id,
-                "path": file.path.as_posix(),
-                "checksum": file.checksum,
-                "size": file.size,
-                "type": file.checksum_name,
-            }
+        # if an entry for the same file exists but is out of date, we'll replace it
+        # otherwise, a new entry is added the database (upsert=True)
+        # * adding hostnames for future comparison of local paths
+        new_db_entry = {
+            "session_id": file.session.id,
+            "path": file.path.as_posix(),
+            "size": file.size,
+            "checksum": file.checksum,
+            "type": file.checksum_name,
+        }
+        cls.db.replace_one(
+            filter=new_db_entry,
+            replacement=new_db_entry.update({"hostname": socket.gethostname()}),
+            upsert=True,
+            hint="session_id",
         )
-        logging.debug(f"added {file.session.folder}/{file.name} to Mongo database")
+        logging.debug(f"Added {file.session.folder}/{file.name} to Mongo database")
 
     @classmethod
     def get_matches(
@@ -1275,15 +1291,13 @@ class MongoDataValidationDB(DataValidationDB):
         match: Union[int, Type[enum.IntEnum]] = None,
     ) -> List[DataValidationFile]:  # , Optional[List[int]]:
         """search database for entries that match any of the given arguments"""
-        if not file: # make a new object with the default DVFile class
+        if not file:  # make a new object with the default DVFile class
             file = cls.DVFile(path=path, size=size, checksum=checksum)
 
         entries = list(
             cls.db.find(
-                {
-                    "session_id": file.session.id,
-                    "type": file.checksum_name,
-                }
+                {"session_id": file.session.id, "type": file.checksum_name,},
+                hint="session_id",
             )
         )
 
@@ -1292,9 +1306,7 @@ class MongoDataValidationDB(DataValidationDB):
 
         matches = set(
             file.__class__(
-                path=entry["path"],
-                checksum=entry["checksum"],
-                size=entry["size"],
+                path=entry["path"], checksum=entry["checksum"], size=entry["size"],
             )
             for entry in entries
         )
@@ -1675,7 +1687,7 @@ class DataValidationFolder:
     ] = None  # auto-populated with lims, npexp, sync computer folders
     include_subfolders: bool = True
 
-    regenerate_threshold_bytes: int = 1 * 1024**2  # MB
+    regenerate_threshold_bytes: int = 1 * 1024 ** 2  # MB
     # - below this file size, checksums will always be generated - even if they're already in the database
     # - above this size, behavior is to get the checksum from the database if it exists for the file (size + path must
     #   be identical), otherwise generate it
@@ -2070,7 +2082,7 @@ def clear_dirs():
         return
 
     regenerate_threshold_bytes = config["options"].getint(
-        "regenerate_threshold_bytes", fallback=1024**2
+        "regenerate_threshold_bytes", fallback=1024 ** 2
     )
     min_age_days = config["options"].getint("min_age_days", fallback=0)
     filename_filter = config["options"].get("filename_filter", fallback="")

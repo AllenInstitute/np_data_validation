@@ -1221,6 +1221,10 @@ class MongoDataValidationDB(DataValidationDB):
         matches = cls.get_matches(file)
         match_type = [(file == match) for match in matches] if matches else []
 
+        # if we have no checksum we won't enter in the database
+        if not file.checksum:
+            return
+        
         # if an entry matching the file already exists, skip it
         if (file.Match.SELF in match_type) or (
             file.Match.SELF_MISSING_SELF in match_type
@@ -1232,18 +1236,23 @@ class MongoDataValidationDB(DataValidationDB):
 
         # if an entry for the same file exists, but doesn't have a checksum or is out
         # of date, replace it
-        if (cls.DVFile.Match.SELF_MISSING_OTHER in match_type) or (
-            cls.DVFile.Match.SELF_PREVIOUS_VERSION in match_type
+        if (file.Match.SELF_MISSING_OTHER in match_type) or (
+            file.Match.SELF_PREVIOUS_VERSION in match_type
         ):
-
-            cls.update_entry(file)
-            entries = list(
-                cls.db.find(
-                    {
-                        "path": file.path.as_posix(),
-                    }
-                )
+            # TODO replace an outdated entry in the database
+            logging.debug(
+                f"skipped {file.session.folder}/{file.name} in Mongo database"
             )
+            return
+            # cls.update_entry(file)
+            # entries = list(
+            #     cls.db.find(
+            #         {
+            #             "path": file.path.as_posix(),
+            #         }
+            #     )
+            # )
+            
         # otherwise, continue to add the file to the database
         cls.db.insert_one(
             {

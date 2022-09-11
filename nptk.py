@@ -98,7 +98,7 @@ class Rig(Enum):
             return None
 
         if platform.system() == "Windows":
-            return RF'\\{self.host}'
+            return RF'//{self.host}'
         else:
             return RF'/{self.host}'
 

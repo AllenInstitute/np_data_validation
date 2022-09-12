@@ -1062,7 +1062,7 @@ class CRC32DataValidationFile(DataValidationFile, SessionFile):
 
 
 def valid_sha256_checksum(value: str) -> bool:
-    """ validate crc32 checksum """
+    """Validate sha256/sha3_256 checksum """
     if (
         isinstance(value, str)
         and len(value) == 64

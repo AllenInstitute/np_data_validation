@@ -6,7 +6,7 @@ import json
 import logging
 import pathlib
 import sys
-from typing import List, Union
+from typing import Dict, List, Tuple, Union
 
 import data_validation as dv
 
@@ -77,6 +77,113 @@ def hash_file(
             hasher.update(chunk)
     return hasher.hexdigest()
 
+
+def upload_jsons_from_ecephys_session_or_file(session_or_file: Union[int, str, pathlib.Path, dv.DataValidationFile]) -> List[Tuple]:
+    """Returns a list of tuples of (input_json, output_json) for any given session file
+    or session id."""
+    if isinstance(session_or_file,(str,pathlib.Path)):
+        try:
+            lims_dir = dv.Session(session_or_file).lims_path
+        except:
+            return None
+    else:
+        if isinstance(session_or_file,(dv.DataValidationFile)):
+            lims_dir = session_or_file.session.lims_path  
+        elif isinstance(session_or_file,int):
+            lims_dir = dv.Session(path=f"{session_or_file}_366122_20220618").lims_path
+        if not lims_dir:
+            return None
+    
+    input_and_output_jsons = []
+    for upload_input_json in itertools.chain(
+        lims_dir.rglob("*_UPLOAD_QUEUE_*_input.json"),
+        lims_dir.rglob("*EUR_QUEUE_*_input.json"),
+        ):
+        # get corresponding output json
+        matching_output_jsons = upload_input_json.parent.rglob(
+            "*" + upload_input_json.name.replace("input", "output")
+        )
+        upload_output_json = [f for f in matching_output_jsons]
+        if not upload_output_json:
+            log.info(f"No matching output json found for {upload_input_json}")
+            continue
+
+        if len(upload_output_json) > 1:
+            log.info(
+                f"Multiple output json files found for {upload_input_json}: {upload_output_json}"
+            )
+            continue
+        
+        upload_output_json = upload_output_json[0]
+
+        input_and_output_jsons.append((upload_input_json, upload_output_json))
+    
+    return input_and_output_jsons
+        
+    
+def file_factory_from_ecephys_session(session_or_file: Union[int, str, pathlib.Path, dv.DataValidationFile], return_as_dict=False) -> Union[Dict[str,Dict[str,str]],List[dv.DataValidationFile],]:
+    """Return a list of DVFiles with checksums for an ecephys session on lims.
+    
+    Provide path to ecephys_session_ dir or any file within it and we'll extract out
+    the session dir.
+    
+    #! Current understanding is that files can't be overwritten on lims
+    so although a file may have been uploaded multiple times (appearing in multiple
+    upload queue files with multiple hashes), the path in lims will always be unique (ie
+    the same file can live in multiple subfolders) - so we should be able to aggregate
+    all filepaths across all upload queue files and get a unique set of files (with some
+    possible overlap in data/checksums).
+    
+    """
+
+    input_and_output_jsons = upload_jsons_from_ecephys_session_or_file(session_or_file)
+    
+    all_hashes = {}
+    for upload_input_json, upload_output_json in input_and_output_jsons:
+        # get hash function that was used by lims
+        hasher_key = hash_type_from_ecephys_upload_input_json(upload_input_json)
+        # get hashes from output json
+        hashes = hashes_from_ecephys_upload_output_json(upload_output_json, hasher_key)
+        
+        for file in hashes.keys():
+            if all_hashes.get(file,None):
+                print(f"{file} already in all_hashes")
+            all_hashes.update({file:{hasher_key:hashes[file]}})
+        
+    if return_as_dict:
+        return all_hashes
+
+    # this is slow-ish and only makes sense if we need DVFiles for all objects in a
+    # session - otherwise just use the dict
+    DVFiles = [] 
+    for file,hashes in all_hashes.items():
+        for hasher_key,hash_hexdigest in hashes.items():
+            DVFiles.append(available_DVFiles[hasher_key](path=file,checksum=hash_hexdigest))
+    return DVFiles
+
+def get_file_with_hash_from_lims(file: Union[str,pathlib.Path,dv.SessionFile]) -> dv.DataValidationFile:
+    """Return the hash of a file in LIMS, or None if it doesn't exist."""
+    if not isinstance(file,dv.SessionFile):
+        file = dv.SessionFile(path=file)
+        
+    if not file.lims_backup:
+        return None
+    
+    lims_file = file.lims_backup
+    all_hashes = file_factory_from_ecephys_session(lims_file,return_as_dict=True)
+    if not all_hashes:
+        return None
+    DVFiles = []
+    for lims_file,hashes in all_hashes.items():
+        if lims_file == file.lims_backup.as_posix() or lims_file == file.lims_backup.as_posix()[1:]:
+            for hasher_key,hash_hexdigest in hashes.items():
+                DVFiles.append(available_DVFiles[hasher_key](path=lims_file,checksum=hash_hexdigest))    
+    if len(DVFiles) == 1:
+        return DVFiles[0]
+    elif len(DVFiles) > 1:
+        # multiple checksums found - return first (which should be sha3_256 and is more common)
+        return DVFiles[0]
+    return None
 
 def delete_file_if_lims_hash_matches(
     file: Union[str, pathlib.Path],

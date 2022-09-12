@@ -14,7 +14,7 @@ log = logging.getLogger(__name__)
 
 # from allensdk/brain_observatory/ecephys/copy_utility/_schemas.py:
 available_hashers = {"sha3_256": hashlib.sha3_256, "sha256": hashlib.sha256}
-
+available_DVFiles = {"sha3_256": dv.SHA3_256DataValidationFile, "sha256": dv.SHA256DataValidationFile}
 
 def hash_type_from_ecephys_upload_input_json(path: Union[str, pathlib.Path]) -> str:
     """Read LIMS ECEPHYS_UPLOAD_QUEUE _input.json and return the hashlib class."""

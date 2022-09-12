@@ -89,7 +89,7 @@ def delete_file_if_lims_hash_matches(
         print(f"{file.as_posix()} is not a file or does not exist")
         return 0
     if not lims_file:
-        lims_file = dv.SessionFile(file).lims_path
+        lims_file = dv.SessionFile(file).lims_backup
     if not lims_file:
         print(
             f"No lims file specified, and could not find match in lims for {file.as_posix()}"

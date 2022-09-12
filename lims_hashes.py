@@ -16,15 +16,15 @@ log = logging.getLogger(__name__)
 available_hashers = {"sha3_256": hashlib.sha3_256, "sha256": hashlib.sha256}
 available_DVFiles = {"sha3_256": dv.SHA3_256DataValidationFile, "sha256": dv.SHA256DataValidationFile}
 
-def hash_type_from_ecephys_upload_input_json(path: Union[str, pathlib.Path]) -> str:
+def hash_type_from_ecephys_upload_input_json(json_path: Union[str, pathlib.Path]) -> str:
     """Read LIMS ECEPHYS_UPLOAD_QUEUE _input.json and return the hashlib class."""
-    with open(path) as f:
+    with open(json_path) as f:
         hasher_key = json.load(f).get("hasher_key", None)
     return hasher_key
 
 
 def hashes_from_ecephys_upload_output_json(
-    path: Union[str, pathlib.Path], hasher_key: str
+    json_path: Union[str, pathlib.Path], hasher_key: str
 ) -> dict[str, str]:
     """Read LIMS ECEPHYS_UPLOAD_QUEUE _output.json and return a dict of {lims filepaths:hashes(hex)}."""
     # hash_cls is specified in output_json, not input json, so we'll need to open that
@@ -33,20 +33,20 @@ def hashes_from_ecephys_upload_output_json(
     # organization of files may change in future, and we need to pass the hash_cls to
     # other functions
 
-    if not path and not hasher_key:
+    if not json_path and not hasher_key:
         raise ValueError("path and hashlib class must be provided")
 
-    path = pathlib.Path(path)
+    json_path = pathlib.Path(json_path)
     if not hasher_key in available_hashers.keys():
         raise ValueError(f"hash_cls must be one of {list(available_hashers.keys())}")
 
-    if not path.exists():
+    if not json_path.exists():
         raise FileNotFoundError("path does not exist")
 
-    if not path.suffix == ".json":
+    if not json_path.suffix == ".json":
         raise ValueError("path must be a json file")
 
-    with open(path) as f:
+    with open(json_path) as f:
         data = json.load(f)
 
     file_hash = {}

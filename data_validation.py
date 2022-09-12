@@ -1273,9 +1273,14 @@ class MongoDataValidationDB(DataValidationDB):
             "checksum": file.checksum,
             "type": file.checksum_name,
         }
+        
+        # * adding hostnames for future comparison of local paths
+        new_db_entry_with_hostname = new_db_entry.copy()
+        new_db_entry_with_hostname["hostname"] = socket.gethostname()
+
         cls.db.replace_one(
             filter=new_db_entry,
-            replacement=new_db_entry.update({"hostname": socket.gethostname()}),
+            replacement=new_db_entry_with_hostname,
             upsert=True,
             hint="session_id",
         )

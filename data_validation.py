@@ -104,6 +104,7 @@ import abc
 import configparser
 import datetime
 import enum
+import functools
 import hashlib
 import itertools
 import json
@@ -182,7 +183,7 @@ def progressbar(
         file.flush()
 
 
-def chunk_crc32(file: Any = None, fsize=None) -> str:
+def chunk_crc32(file: Any = None, size=None, *args,**kwargs) -> str:
     """generate crc32 with for loop to read large files in chunks"""
     if isinstance(file, str):
         pass
@@ -190,23 +191,23 @@ def chunk_crc32(file: Any = None, fsize=None) -> str:
         file = str(file)
     elif isinstance(file, DataValidationFile):
         file = file.path.as_posix()
-        fsize = file.size
+        size = file.size
 
     chunk_size = 65536  # bytes
 
     # print('using builtin ' + inspect.stack()[0][3])
 
     # get filesize just once
-    if not fsize:
-        fsize = os.stat(file).st_size
+    if not size:
+        size = os.stat(file).st_size
 
     # don't show progress bar for small files
-    display = True if fsize > 1e06 * chunk_size else False
+    display = True if size > 1e06 * chunk_size else False
     display = False  #! not compatible with multithread processing of DVFolders
     crc = 0
     with open(str(file), "rb", chunk_size) as ins:
         for _ in progressbar(
-            range(int((fsize / chunk_size)) + 1),
+            range(int((size / chunk_size)) + 1),
             prefix="generating crc32 checksum ",
             units="B",
             unit_scaler=chunk_size,
@@ -236,6 +237,28 @@ def test_crc32_function(func, *args, **kwargs):
         f.write(b"foo")
     assert func(temp) == "8C736521", "checksum function incorrect"
 
+def chunk_hashlib(
+    path: Union[str, pathlib.Path], hasher_cls=hashlib.sha3_256, blocks_per_chunk=128, *args,**kwargs
+) -> str:
+    """
+    Use a hashing function on a file as per lims2 copy tool, but return the 32-len
+    string hexdigest instead of a 32-len list of integers.
+    """
+    hasher = hasher_cls()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(hasher.block_size * blocks_per_chunk), b""):
+            hasher.update(chunk)
+    return hasher.hexdigest()
+
+def valid_sha256_checksum(value: str) -> bool:
+    """Validate sha256/sha3_256 checksum """
+    if (
+        isinstance(value, str)
+        and len(value) == 64
+        and all(c in "0123456789abcdef" for c in value.lower())
+    ):
+        return True
+    return False
 
 def test_sha256_function(func, *args, **kwargs):
     temp = os.path.join(
@@ -803,7 +826,7 @@ class DataValidationFile(abc.ABC):
     @classmethod
     def generate_checksum(cls, path, size=None) -> str:
         cls.checksum_test(cls.checksum_generator)
-        return cls.checksum_generator(path, size)
+        return cls.checksum_generator(path, size=size)
 
     @property
     def checksum(self) -> str:
@@ -1061,22 +1084,13 @@ class CRC32DataValidationFile(DataValidationFile, SessionFile):
         SessionFile.__init__(self, path)
 
 
-def valid_sha256_checksum(value: str) -> bool:
-    """Validate sha256/sha3_256 checksum """
-    if (
-        isinstance(value, str)
-        and len(value) == 64
-        and all(c in "0123456789abcdef" for c in value.lower())
-    ):
-        return True
-    return False
-
 
 class SHA256DataValidationFile(DataValidationFile, SessionFile):
-
+    hashlib_func = functools.partial(chunk_hashlib,hasher_cls=hashlib.sha256)
+    
     checksum_threshold: int = 0  # don't generate checksum for any files by default
     checksum_name: str = "sha256"
-    checksum_generator: Callable[[str], str] = hashlib.sha256
+    checksum_generator: Callable[[str], str] = hashlib_func
     checksum_test: Callable[[Callable], None] = test_sha256_function
     checksum_validate: Callable[[str], bool] = valid_sha256_checksum
 
@@ -1087,10 +1101,11 @@ class SHA256DataValidationFile(DataValidationFile, SessionFile):
 
 
 class SHA3_256DataValidationFile(DataValidationFile, SessionFile):
-
+    hashlib_func = functools.partial(chunk_hashlib,hasher_cls=hashlib.sha3_256)
+    
     checksum_threshold: int = 0  # don't generate checksum for any files by default
     checksum_name: str = "sha3_256"
-    checksum_generator: Callable[[str], str] = hashlib.sha3_256
+    checksum_generator: Callable[[str], str] = hashlib_func
     checksum_test: Callable[[Callable], None] = test_sha3_256_function
     checksum_validate: Callable[
         [str], bool

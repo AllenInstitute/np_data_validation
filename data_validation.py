@@ -147,6 +147,13 @@ log.addHandler(logHandler)
 log.setLevel(logging.INFO)  # may be overwritten elsewhere
 
 
+class SessionError(ValueError):
+    """Raised when a session folder string ([lims-id]_[mouse-id]_[date]) can't be found in a
+    filepath"""
+
+    pass
+
+
 def error(e: TypeError) -> str:
     return "".join(traceback.TracebackException.from_exception(e).format())
 
@@ -336,7 +343,7 @@ class Session:
             self.date = lims_dg.data_dict["datestring"]
             self.folder = ("_").join([self.id, self.mouse, self.date])
         else:
-            raise ValueError(
+            raise SessionError(
                 f"{self.__class__.__name__} path must contain a valid session folder {path}"
             )
 
@@ -439,7 +446,7 @@ class SessionFile:
         # extract the session ID from anywhere in the path
         self.session = Session(self.path)
         if not self.session:
-            raise ValueError(
+            raise SessionError(
                 f"{self.__class__.__name__}: path does not contain a session ID {self.path.as_posix}"
             )
 
@@ -455,7 +462,7 @@ class SessionFile:
                 break
             parts = parts[1:]
         else:
-            raise ValueError(
+            raise SessionError(
                 f"{self.__class__.__name__}: session_folder not found in path {self.path.as_posix()}"
             )
 
@@ -1421,7 +1428,7 @@ class CRC32JsonDataValidationDB(DataValidationDB):
                     try:
                         file = self.DVFile(path=path, checksum=crc32)
                         self.add_file(file=file)
-                    except ValueError as e:
+                    except SessionError as e:
                         print("skipping file with no session_id")
                         # return
 
@@ -1461,7 +1468,7 @@ class CRC32JsonDataValidationDB(DataValidationDB):
                             )  # takes too long to check sizes here
                         else:
                             self.add_file(file=file)
-                    except ValueError as e:
+                    except SessionError as e:
                         print("skipping file with no session_id")
                         # return
 

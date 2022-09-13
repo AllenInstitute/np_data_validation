@@ -768,7 +768,7 @@ class DataValidationFile(abc.ABC):
 
         # set read-only property, won't be hashed
         self._probe_dir = (
-            probe_name if probe is not None else None
+            probe_name if path and probe is not None else None
         )  # avoid checking 'if probe' since it could equal 0
 
         if self.path and size is None:

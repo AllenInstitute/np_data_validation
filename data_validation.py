@@ -1265,7 +1265,6 @@ class MongoDataValidationDB(DataValidationDB):
 
         # if an entry for the same file exists but is out of date, we'll replace it
         # otherwise, a new entry is added the database (upsert=True)
-        # * adding hostnames for future comparison of local paths
         new_db_entry = {
             "session_id": file.session.id,
             "path": file.path.as_posix(),
@@ -1562,14 +1561,52 @@ class DataValidationStatus:
     def __init__(
         self,
         file: DataValidationFile = None,
+        matches: List[DataValidationFile] = None, # get matches for all session files only once and feed them in
         path: str = None,
         checksum: str = None,
         size: int = None,
     ):
-        if not file:
+        if not file or not isinstance(file, DataValidationFile): 
+            if isinstance(file,str):
+                path = file
+            # generate a file from the default DataValidationFile class
             file = self.db.DVFile(path=path, checksum=checksum, size=size)
         self.file = file
 
+        # TODO cycle through different DVFile classes here until we find matches 
+        if not matches or not isinstance(matches, list) or not isinstance(matches[0], DataValidationFile):
+            matches = self.db.get_matches(file=file)
+        self.matches = matches
+    
+    @property
+    def match_types(self) -> List[int]:
+        """return a list of match types for the file"""
+        return [(self.file == match) for match in self.matches].sort(reverse=True)
+
+    @property
+    def eval_accessible_db_matches(self) -> DataValidationFile.Match:
+        """Return an enum indicating the highest status of a file's matches in the database,
+        *only* if they're currently accessible."""
+        if self.matches:
+            for idx, match in enumerate(self.matches):
+                if match.path.is_file():
+                    return DataValidationFile.Match(self.match_types[idx])
+        return DataValidationFile.Match.UNKNOWN
+    
+    @property
+    def eval_all_db_matches(self) -> DataValidationFile.Match:
+        """Return an enum indicating the highest status of a file's matches in the database,
+        regardless of whether they're currently accessible."""
+        if self.matches:
+            return DataValidationFile.Match(max(self.match_types))
+        return DataValidationFile.Match.UNKNOWN
+        
+    # @property
+    # def eval_backups(self) -> self.Backup:
+    #     """Return an enum indicating the status of the file's backups (according to
+    #     what's currently accessible on disk or //allen/ - not from entries in the database)"""
+        
+        
     class Backup(enum.IntFlag):
         """Evaluate where a file is in the backup process.
 
@@ -1643,8 +1680,8 @@ class DataValidationStatus:
         # copies exist, more computation is needed to validate
 
         COPY_ON_LIMS_MISSING_SELF = 303  # checksum self.file
-        COPY_ON_LIMS_MISSING_OTHER = 302  # checksum match found
-        COPY_ON_LIMS_MISSING_BOTH = 301
+        COPY_ON_LIMS_MISSING_OTHER = 302  # checksum the file on lims (or get from upload queue)
+        COPY_ON_LIMS_MISSING_BOTH = 301 
 
         COPY_ON_NPEXP_MISSING_SELF = COPY_ON_SD_MISSING_SELF = 203
         COPY_ON_NPEXP_MISSING_OTHER = COPY_ON_SD_MISSING_OTHER = 202

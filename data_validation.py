@@ -1090,8 +1090,18 @@ class CRC32DataValidationFile(DataValidationFile, SessionFile):
         DataValidationFile.__init__(self, path=path, checksum=checksum, size=size)
         SessionFile.__init__(self, path)
 
-
-
+class OrphanedDVFile(DataValidationFile):
+    """Files with no session identifier, containing only enough information to search
+    the database for matches - currently used within DB classes, and only exist
+    temporarily"""
+    checksum_threshold: int = 0  # don't generate checksum for any files by default
+    checksum_generator: Callable[[str], str] = chunk_crc32
+    checksum_test: Callable[[Callable], None] = test_crc32_function
+    checksum_validate: Callable[[str], bool] = valid_crc32_checksum
+    def __init__(self, path: str = None, checksum: str = None, size: int = None):
+        # if the path doesn't contain a session_id, this will raise an error:
+        DataValidationFile.__init__(self, path=path, checksum=checksum, size=size)
+        
 class SHA256DataValidationFile(DataValidationFile, SessionFile):
     hashlib_func = functools.partial(chunk_hashlib,hasher_cls=hashlib.sha256)
     
@@ -1317,16 +1327,47 @@ class MongoDataValidationDB(DataValidationDB):
         match: Union[int, Type[enum.IntEnum]] = None,
     ) -> List[DataValidationFile]:  # , Optional[List[int]]:
         """search database for entries that match any of the given arguments"""
-        if not file:  # make a new object with the default DVFile class
-            file = cls.DVFile(path=path, size=size, checksum=checksum)
-
-        entries = list(
-            cls.db.find(
-                {"session_id": file.session.id, "type": file.checksum_name,},
-                hint="session_id",
+        if not file or not isinstance(file, DataValidationFile): 
+            if isinstance(file, str):  # path provided as positional argument
+                path = file
+            try:
+                # make a new object with the default DVFile class
+                file = cls.DVFile(path=path, size=size, checksum=checksum)
+            except SessionError:
+                # create non-SessionFile DVFile object, use custom get_matches method
+                file = OrphanedDVFile(path=path, size=size, checksum=checksum)
+        
+        entries = []
+        if isinstance(file, SessionFile): # expected behavior normally 
+            # TODO update some DataValidationFile type guards to SessionFile, now that
+            # we're allowing OrphanedDVFiles 
+            entries = list(
+                cls.db.find(
+                    {"session_id": file.session.id, "type": file.checksum_name,},
+                    hint="session_id",
+                )
             )
-        )
-
+            
+        elif isinstance(file, OrphanedDVFile): 
+            # for non-SessionFile DVFile objects, we want to find all matches possible
+            if file.path:
+                entries += list(
+                cls.db.find(
+                    {"path": file.path.as_posix()},
+                ))
+            if file.checksum:
+                entries += list(
+                cls.db.find(
+                    {"checksum": file.checksum},
+                ),
+            )
+            if file.size:
+                entries += list(
+                cls.db.find(
+                    {"size": file.size},
+                ),
+            )
+            
         if not entries:
             return None
 

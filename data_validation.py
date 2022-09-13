@@ -1275,8 +1275,14 @@ class MongoDataValidationDB(DataValidationDB):
         checksum: str = None,
     ):
         """Add an entry to the database """
-        if not file:  # make a new object with the default DVFile class
-            file = cls.DVFile(path=path, size=size, checksum=checksum)
+        if not isinstance(file, DataValidationFile):
+            if isinstance(file, str):  # path provided as positional argument
+                path = file
+            # make a new object with the default DVFile class
+            try:
+                file = cls.DVFile(path=path, size=size, checksum=checksum)
+            except ValueError:
+                return
 
         # check the database for similar entries
         matches = cls.get_matches(file)

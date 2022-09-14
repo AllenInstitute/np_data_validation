@@ -2172,7 +2172,7 @@ def DVFolders_from_dirs(
 def clear_dirs():
 
     config = configparser.ConfigParser()
-    config.read(os.path.join(os.path.dirname(__file__), "config.ini"))
+    config.read(os.path.join(os.path.dirname(__file__), "clear_dirs.cfg"))
     dirs = [
         pathlib.Path(d.strip()).resolve().as_posix()
         for d in config["options"]["dirs"].split(",")

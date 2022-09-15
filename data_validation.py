@@ -1281,9 +1281,13 @@ class MongoDataValidationDB(DataValidationDB):
             # make a new object with the default DVFile class
             try:
                 file = cls.DVFile(path=path, size=size, checksum=checksum)
-            except ValueError:
+            except ValueError: # SessionError-subclass may be raised if no session string in path
                 return
-
+            
+        if not isinstance(file, SessionFile):
+            # non-session files currently not allowed in db
+            return
+        
         # check the database for similar entries
         matches = cls.get_matches(file)
         match_type = [(file == match) for match in matches] if matches else []

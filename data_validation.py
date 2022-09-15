@@ -1810,7 +1810,7 @@ class DataValidationFolder:
 
     # - applied to glob search for files in the folder
 
-    def __init__(self, path: str):
+    def __init__(self, path: str | pathlib.Path):
 
         # extract the session ID from anywhere in the path (not reqd)
         try:

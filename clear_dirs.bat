@@ -1,6 +1,9 @@
 @REM if necessary, clone repo with:
 @REM git clone https://github.com/AllenInstitute/np_data_validation.git
 
+@REM this just allows us to run as admin
+cd /d "%~dp0"
+
 ECHO off
 title Checking for valid backups and clearing local directories
 

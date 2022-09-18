@@ -344,7 +344,7 @@ class Session:
             self.folder = ("_").join([self.id, self.mouse, self.date])
         else:
             raise SessionError(
-                f"{self.__class__.__name__} path must contain a valid session folder {path}"
+                f"{path} does not contain a valid session folder string"
             )
 
     @classmethod
@@ -1291,6 +1291,7 @@ class MongoDataValidationDB(DataValidationDB):
                 file = cls.DVFile(path=path, size=size, checksum=checksum)
             except SessionError: # if no session string in path
                 return
+            logging.debug(f"No DVFile provided to add_file() - created {file.__class__.__name__} from path")
             
         if not isinstance(file, SessionFile):
             # non-session files currently not allowed in db
@@ -1302,15 +1303,7 @@ class MongoDataValidationDB(DataValidationDB):
 
         # if we have no checksum we won't enter in the database
         if not file.checksum:
-            return
-
-        # if an entry matching the file already exists, skip it
-        if (file.Match.SELF in match_type) or (
-            file.Match.SELF_MISSING_SELF in match_type
-        ):
-            logging.debug(
-                f"skipped {file.session.folder}/{file.name} in Mongo database"
-            )
+            logging.debug(f"Checksum missing - not entered into MongoDB {file.path}")
             return
 
         # if an entry for the same file exists but is out of date, we'll replace it
@@ -1336,7 +1329,7 @@ class MongoDataValidationDB(DataValidationDB):
             upsert=True,
             hint="session_id",
         )
-        logging.debug(f"Added {file.session.folder}/{file.name} to Mongo database")
+        logging.debug(f"Added {file.name} to MongoDB")
 
     @classmethod
     def get_matches(

@@ -1404,6 +1404,7 @@ class MongoDataValidationDB(DataValidationDB):
                 or match_type in [x for x in file.Match]
             ):
                 return [o for o in matches if (file == o) == match_type > 0]
+            return []
 
         if not match:
             return [o for o in matches if (file == o) > 0]

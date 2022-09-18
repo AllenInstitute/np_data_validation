@@ -2243,6 +2243,12 @@ def clear_dirs():
         f"{divider}Finished clearing.\n{len(total_deleted_bytes)} files deleted | {sum(total_deleted_bytes) / 1024**3 :.1f} GB recovered\n"
     )
 
+# including names from allensdk/brain_observatory/ecephys/copy_utility/_schemas.py:
+available_DVFiles = {
+    "sha3_256": SHA3_256DataValidationFile, 
+    "sha256": SHA256DataValidationFile,
+    "crc32": CRC32DataValidationFile,
+    }
 
 if __name__ == "__main__":
     clear_dirs()

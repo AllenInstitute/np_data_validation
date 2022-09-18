@@ -1090,18 +1090,6 @@ class CRC32DataValidationFile(DataValidationFile, SessionFile):
         DataValidationFile.__init__(self, path=path, checksum=checksum, size=size)
         SessionFile.__init__(self, path)
 
-class OrphanedDVFile(DataValidationFile):
-    """Files with no session identifier, containing only enough information to search
-    the database for matches - currently used within DB classes, and only exist
-    temporarily"""
-    checksum_threshold: int = 0  # don't generate checksum for any files by default
-    checksum_generator: Callable[[str], str] = chunk_crc32
-    checksum_test: Callable[[Callable], None] = test_crc32_function
-    checksum_validate: Callable[[str], bool] = valid_crc32_checksum
-    def __init__(self, path: str = None, checksum: str = None, size: int = None):
-        # if the path doesn't contain a session_id, this will raise an error:
-        DataValidationFile.__init__(self, path=path, checksum=checksum, size=size)
-        
 class SHA256DataValidationFile(DataValidationFile, SessionFile):
     hashlib_func = functools.partial(chunk_hashlib,hasher_cls=hashlib.sha256)
     
@@ -1133,6 +1121,16 @@ class SHA3_256DataValidationFile(DataValidationFile, SessionFile):
         # if the path doesn't contain a session_id, this will raise an error:
         SessionFile.__init__(self, path)
 
+class OrphanedDVFile(DataValidationFile):
+    """Files with no session identifier, containing only enough information to search
+    the database for matches"""
+    checksum_threshold: int = 0  # don't generate checksum for any files by default
+    checksum_generator: Callable[[str], str] = SHA3_256DataValidationFile.checksum_generator
+    checksum_test: Callable[[Callable], None] = SHA3_256DataValidationFile.checksum_test
+    checksum_validate: Callable[[str], bool] = SHA3_256DataValidationFile.checksum_validate
+    def __init__(self, path: str = None, checksum: str = None, size: int = None):
+        DataValidationFile.__init__(self, path=path, checksum=checksum, size=size)
+        
 
 class DataValidationDB(abc.ABC):
     """Represents a database of files with validation metadata

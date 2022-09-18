@@ -2239,7 +2239,7 @@ def clear_dirs():
 
         total_deleted_bytes += deleted_bytes
 
-    logging.info(
+    print(
         f"{divider}Finished clearing.\n{len(total_deleted_bytes)} files deleted | {sum(total_deleted_bytes) / 1024**3 :.1f} GB recovered\n"
     )
 

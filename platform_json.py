@@ -4,9 +4,9 @@ import json
 import logging
 import os
 import pathlib
+import pprint
 import re
 import shutil
-import sys
 import warnings
 from typing import Dict, List, Tuple, Union
 
@@ -416,9 +416,16 @@ class Entry:
         self.platform_json: PlatformJson = Files(platform_json.path) if not isinstance(platform_json, Files) else platform_json
         
         self.actual_data: pathlib.Path = self.platform_json.path.parent / self.dir_or_file_name
+        
+        if not self.platform_json.dict_expected.get(self.descriptive_name,None):
+            # necessary fix for some projects (OSIllusion)
+            if self.descriptive_name == 'isi_registration_coordinates':
+                self.descriptive_name = 'isi _registration_coordinates'
+            elif self.descriptive_name == 'isi _registration_coordinates':
+                self.descriptive_name = 'isi_registration_coordinates'
         # a presumed path to the data in the same folder as the platform json file
-        self.expected_data: pathlib.Path = self.platform_json.path.parent / self.platform_json.expected[self.descriptive_name][self.dir_or_file_type]
-
+        self.expected_data: pathlib.Path = self.platform_json.path.parent / self.platform_json.dict_expected[self.descriptive_name][self.dir_or_file_type]
+                
     def __eq__(self, other):
         # when comparing entries we want to know whether they have the same
         # descriptive name key and the same file/folder name
@@ -426,6 +433,9 @@ class Entry:
             
     def __dict__(self):
         return {self.descriptive_name: {self.dir_or_file_type:self.dir_or_file_name}}
+     
+    def __str__(self):
+        return self.dir_or_file_name
     
     @property
     def correct(self) -> bool:
@@ -467,7 +477,16 @@ class Entry:
     def z(self) -> pathlib.Path:
         """Path to possible copy on z-drive/neuropixels_data"""
         return pathlib.Path(f"//{self.platform_json.sync}/{NEUROPIXELS_DATA_RELATIVE_PATH}") / self.platform_json.session.folder / self.dir_or_file_name 
-    
+        
+    @property
+    def lims(self) -> Union[pathlib.Path,None]:
+        if self.platform_json.session.lims:
+            session_dir = pathlib.Path(self.platform_json.session.lims["storage_directory"])
+            if (session_dir / self.dir_or_file_name).exists():
+                return session_dir / self.dir_or_file_name
+            for f in session_dir.rglob(f"*{self.dir_or_file_name}*"):
+                return f
+        return None
     
     def rename():
         """Rename the current data in the same folder as the platform json file"""
@@ -749,7 +768,7 @@ class SurfaceImage(Entry):
     
     @property
     def total_imgs_per_exp(self):
-        return sum('_surface_image_' in descriptive_name for descriptive_name in self.platform_json.template.keys())
+        return sum('_surface_image_' in descriptive_name for descriptive_name in self.platform_json.dict_template.keys())
     
     @property
     def origin(self) -> pathlib.Path:
@@ -890,12 +909,19 @@ class Files(PlatformJson):
             * all template entries should now be in the files dict
                 Files(*.json).missing == {}
     """
-
+    class PlatformJsonFilesTemplateNotFoundError(FileNotFoundError):
+        pass
     
     def __init__(self,*args,**kwargs):
-        super().__init__(*args,**kwargs)
+        super().__init__(*args,**kwargs) 
+        # create a placeholder for a correct set of files and their entries in
+        # the 'files' dict (list is populated by the fix() function below, if necessary)
+        self.entries_corrected:List[Entry] = [] 
+        self.print_summary()
+        
+    def fix(self):
         if STAGING:
-            # in Staging mode, we do all file operations in a 'virtual' session
+            # in Staging  mode, we do all file operations in a 'virtual' session
             # folder: we'll try to create a complete session folder of correctly named
             # experiment files, but instead of modifying the session folder the platform
             # json lives in, we'll copy it to a new folder, and instead of copying data
@@ -904,23 +930,11 @@ class Files(PlatformJson):
             # further validation can run on the symlinks to check their contents
             
             # - create a blank slate to work from:
-            self.staging_folder.mkdir(parents=True,exist_ok=True)
-            [p.unlink() for p in self.staging_folder.rglob('*') if p.is_file()]
-            [p.rmdir() for p in self.staging_folder.rglob('*') if p.is_dir()]
-            # - copy the original platform json to the staging folder 
-            if self.backup.exists():
-                shutil.copy(self.backup,self.staging_folder)
-            else:
-                shutil.copy2(self.path, self.staging_folder)
-                
+            self.remake_staging_folder()
             # - now replace the linked file with the new one so that all calls to the
             #   platform json's path/parent folder will resolve to the new virtual one.
             #   this will save us from making a lot of 'if STAGING:' checks
             self.path = self.staging_folder / self.path.name
-            
-        # this will become the list of entries in the updated 'files' dict
-        # (list is populated by the functions that follow)
-        self.new_entries:List[Entry] = [] 
         
         # 1. Deal with the missing data/files
         self.fix_data()
@@ -930,21 +944,60 @@ class Files(PlatformJson):
             #3. Update the contents of the files dict in the platform json
             self.write()
             # (this also appends the project codename ie. OpenScopeIllusion)
-        
-        # optional steps (not triggered automatically):
+            
+        self.print_summary()
+        # optional steps (not implemented yet)):
         # - checksum data
         # - copy data to lims incoming
-        print(f"{self.correct_data=}")
-        print(f"{self.correct_dict=}")
-    
+        
+    def print_summary(self):
+        """Print a summary of session folder status"""
+        
+        if self.correct_dict:
+            print("Platform json entries are correct")
+        
+        def print_staging_msg():
+            print("Candidate data files have been found:")
+            print(f" - check files in staging folder: {self.staging_folder}")
+            print("   - if correct: set STAGING = False and re-run")
+            print("   - if not: manually add files to the session folder on np-exp")
+            
+        if self.correct_data:
+            if STAGING:
+                print_staging_msg()
+            else:
+                print("All data files are present and correct")
+        else:
+            print("Some data files are missing or incorrect")
+            
+            if self.correct_data_ready:
+                if STAGING:
+                    print_staging_msg()
+            else:
+                print("Files need to be found: try running obj.fix()")
+   
+    def remake_staging_folder(self):
+        self.staging_folder.mkdir(parents=True,exist_ok=True)
+        [p.unlink() for p in self.staging_folder.rglob('*') if p.is_file()]
+        [p.rmdir() for p in self.staging_folder.rglob('*') if p.is_dir()]
+        # - copy the original platform json to the staging folder 
+        if self.backup.exists():
+            shutil.copy(self.backup,self.staging_folder)
+        else:
+            shutil.copy2(self.path, self.staging_folder)
+            
     @property
     def staging_folder(self) -> pathlib.Path:
         """Where symlinks to data are created, instead of modifying original data.
         Created anew each time we run in Staging mode."""
         return STAGING_ROOT / self.session.folder
-        
+    
     @property
-    def template(self) -> dict: 
+    def dict_current(self) -> dict:
+        return self.contents['files']
+    
+    @property
+    def dict_template(self) -> dict: 
         if (
             any(h in self.contents.get('stimulus_name','') for h in ['hab','habituation'])
         or any(h in self.contents.get('workflow','') for h in ['hab','habituation'])
@@ -955,33 +1008,38 @@ class Files(PlatformJson):
         elif 'D2' in self.path.stem:
             session_type = 'D2'
         template_path = TEMPLATES_ROOT / session_type / f"{self.experiment}.json"
+        if not template_path.exists():
+            raise self.PlatformJsonFilesTemplateNotFoundError(f"File manifest template not found for {self.experiment}")
         with template_path.open('r') as f:
             return json.load(f)['files']
         
     @property
-    def expected(self) -> dict:
+    def dict_expected(self) -> dict:
         # convert template dict to str
         # replace % with session string
         # switch ' and " so we can convert str back to dict with json.loads()
-        return json.loads(str(self.template).replace('%',str(self.session.folder)).replace("'",'"'))
+        return json.loads(str(self.dict_template).replace('%',str(self.session.folder)).replace("'",'"'))
         
     @property
-    def current(self) -> dict:
-        return self.contents['files']
+    def dict_missing(self) -> dict:
+        return {k:v for k,v in self.dict_expected.items() if k not in self.dict_current}
     
     @property
-    def missing(self) -> dict:
-        return {k:v for k,v in self.expected.items() if k not in self.current}
+    def dict_extra(self) -> dict:
+        return {k:v for k,v in self.dict_current.items() if k not in self.dict_expected}
     
     @property
-    def extra(self) -> dict:
-        return {k:v for k,v in self.current.items() if k not in self.expected}
+    def dict_incorrect(self) -> dict:
+        return {k:v for k,v in self.dict_current.items() if k in self.dict_expected.keys() and v != self.dict_expected[k]}
     
     @property
-    def incorrect(self) -> dict:
-        return {k:v for k,v in self.current.items() if k in self.expected.keys() and v != self.expected[k]}
+    def dict_corrected(self) -> dict:
+        return {k:v for e in self.entries_corrected for k,v in e.__dict__().items()} if self.entries_corrected else {}
     
-    def entry_from_factory(self, entry:Dict) -> Entry:
+    
+    # Entry lists match dict entries to files and functions for finding/copying data ------- #
+   
+    def entry_from_factory(self, entry:Union[Dict,Tuple]) -> Entry:
         descriptive_name = Entry(entry,self).descriptive_name
         for entry_class in Entry.__subclasses__():
             if descriptive_name in entry_class.descriptors:
@@ -989,18 +1047,41 @@ class Files(PlatformJson):
         raise ValueError(f"{descriptive_name} is not a recognized platform.json[files] entry-type")
     
     @property
-    def new_dict(self) -> dict:
-        return {k:v for e in self.new_entries for k,v in e.__dict__().items()} if self.new_entries else {}
+    def entries_current(self) -> List[Entry]:
+        return [self.entry_from_factory(entry) for entry in self.dict_current.items()]
     
+    @property
+    def entries_expected(self) -> List[Entry]:
+        return [self.entry_from_factory(entry) for entry in self.dict_expected.items()]
+    
+    @property
+    def entries_missing(self) -> List[Entry]:
+        if self.entries_corrected:
+            return [e for e in self.entries_expected if e not in self.entries_corrected or not e.correct_data]
+        return [e for e in self.entries_expected if e not in self.entries_current or not e.correct_data]
+
+    # checks on status of current and located data ----------------------------------------- #
     @property
     def correct_data(self) -> bool:
-        return all([e.correct_data for e in self.new_entries]) if self.new_entries else False
-
+        return all([e.correct_data for e in self.entries_current])
+    
     @property
     def correct_dict(self) -> bool:
-        return all(e in self.new_dict.keys() for e in self.expected.keys())
-    
-    
+        return (
+            all(e in self.dict_current.keys() for e in self.dict_expected.keys())
+            or 
+            all(e in self.dict_corrected.keys() for e in self.dict_expected.keys())
+        )
+ 
+    @property
+    def correct_data_ready(self) -> bool:
+        return (
+            all([e.correct_data for e in self.entries_corrected]) 
+            and 
+            all([expected in self.dict_corrected.items() for expected in self.dict_expected.items()])
+        ) if self.entries_corrected else False
+
+
     def fix_data(self):
         """
             1. Deal with the data:
@@ -1012,20 +1093,45 @@ class Files(PlatformJson):
             * all template entries should now have correct corresponding files 
                 Files.correct_data = all(entry.correct_data for entry in Files(*.json).new_entries)
         """
-        expected = [self.entry_from_factory({k:v}) for k,v in self.expected.items()]
-        for entry in expected:
+        for entry in self.entries_expected:
             if entry.correct_data:
-                self.new_entries.append(entry)
+                self.entries_corrected.append(entry)
                 continue
 
             entry.copy()
             
             if entry.correct_data:
                 print(f"fixed {entry.dir_or_file_name}")
-                self.new_entries.append(entry)
+                self.entries_corrected.append(entry)
                 continue
             print(f"need help finding {entry.dir_or_file_name}")
         
+        if self.correct_data_ready:
+            return
+        MANUAL_MODE = True
+        if not MANUAL_MODE:
+           return
+       
+        entry_types = [e.__class__ for e in self.entries_expected if not e.correct_data]
+        print(f"\n{'-'*50}\nestimated experiment start: {self.exp_start}")
+        print(f"estimated experiment end: {self.exp_end}\n{'-'*50}\n")
+        print("opening existing session folders on z-drive and np-exp")
+        os.startfile(self.z_drive_path.parent) if self.z_drive_path else None
+        self.npexp_path.parent.mkdir(exist_ok=True) # we'll dump files here regardless
+        os.startfile(self.npexp_path.parent)
+        
+        for entry_type in entry_types:
+            entries = [e for e in self.entries_expected if not e.correct_data and e.__class__ == entry_type]
+            print(f"\nopening {entries[0].source}")
+            os.startfile(entries[0].source)
+            print("\nlocate files and copy into np-exp with correct name:\n")
+            [print(e) for e in entries]
+            while True:
+                _ = input("Press enter to re-check, or Ctrl+C to exit")
+                [e.copy() for e in entries]
+                if all(e.npexp.exists() for e in entries):
+                    break
+                
     def fix_dict(self):
         """            
         2. Deal with the platform json 'files' dict:
@@ -1040,10 +1146,10 @@ class Files(PlatformJson):
                 - find entries that don't match template 
                 - decide whether to delete their data"""
                 
-        extra = [self.entry_from_factory({k:v}) for k,v in self.extra.items()]
+        extra = [self.entry_from_factory({k:v}) for k,v in self.dict_extra.items()]
         for entry in extra:
             if entry.actual_data.exists():
-                self.new_entries.append(entry)
+                self.entries_corrected.append(entry)
                 continue
             print(f"{entry.descriptive_name} removed from platform.json: specified data does not exist {entry.dir_or_file_name} ")
 
@@ -1052,9 +1158,9 @@ class Files(PlatformJson):
         # ensure a backup of the original first
         shutil.copy2(self.path, self.backup) if not self.backup.exists() else None
         
-        print(f"updating {self.path} with {len(self.missing)} new entries and {len(self.incorrect)} corrected entries")
+        print(f"updating {self.path} with {len(self.dict_missing)} new entries and {len(self.dict_incorrect)} corrected entries")
         contents = self.contents # must copy contents to avoid breaking class property (Which pulls from .json)
-        contents['files'] = {**self.new_dict}
+        contents['files'] = {**self.dict_corrected}
         contents['project'] = self.session.project
             
         with self.path.open('w') as f:
@@ -1086,4 +1192,33 @@ def get_files_created_between(dir: Union[str, pathlib.Path], strsearch, start:da
             hits.append(match)
     return sorted(hits, key=get_created_timestamp_from_file)
 
-# if __name__ == "__main__":
+    
+def session_to_platform_json_path(session:Union[int, str],root:Union[str,pathlib.Path]=NPEXP_PATH)->pathlib.Path:
+    """Converts a session id or folder str to a platform json file"""
+    
+    num_underscore = len(str(session).split('_')) - 1
+    if num_underscore==2:
+        file_glob = session
+    elif num_underscore==0:
+        file_glob = f"{session}_*_*"
+    else: 
+        raise ValueError(f"provide a sessionID or a full folder string: 'sessionID_mouseID_YYYYMMDD'")
+    
+    results = [path for path in root.glob(f"{file_glob}/*platform*.json")]
+    if not results or len(results) == 0:
+        print("session not found on np-exp - please correct")
+        return
+    if len(results) > 1:
+        print(f"multiple platform jsons found in session folder on np-exp, returning {results[0]} ")
+    return results[0]
+
+if __name__=="__main__":
+    STAGING = True
+    sessionID = "1208667752_637484_20220908"
+    npexp_json_path = session_to_platform_json_path(sessionID, NPEXP_PATH)
+    j = Files(npexp_json_path)
+    j.fix()
+    [print(e) for e in j.entries_missing]
+    os.startfile(j.path.parent)
+    j.exp_start
+    j.exp_end

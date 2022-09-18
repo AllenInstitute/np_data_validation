@@ -1385,7 +1385,7 @@ class MongoDataValidationDB(DataValidationDB):
             file.__class__(
                 path=entry["path"], checksum=entry["checksum"], size=entry["size"],
             )
-            for entry in entries
+            for entry in entries if entry["type"] == file.checksum_name
         )
 
         def filter_on_match_type(match_type: int) -> List[DataValidationFile]:

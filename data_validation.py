@@ -1129,10 +1129,12 @@ class SHA3_256DataValidationFile(DataValidationFile, SessionFile):
         # if the path doesn't contain a session_id, this will raise an error:
         SessionFile.__init__(self, path)
 
+
 class OrphanedDVFile(DataValidationFile):
     """Files with no session identifier, containing only enough information to search
     the database for matches"""
     checksum_threshold: int = 0  # don't generate checksum for any files by default
+    checksum_name: str = SHA3_256DataValidationFile.checksum_name
     checksum_generator: Callable[[str], str] = SHA3_256DataValidationFile.checksum_generator
     checksum_test: Callable[[Callable], None] = SHA3_256DataValidationFile.checksum_test
     checksum_validate: Callable[[str], bool] = SHA3_256DataValidationFile.checksum_validate

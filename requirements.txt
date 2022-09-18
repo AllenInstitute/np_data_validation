@@ -1,3 +1,5 @@
+--extra-index-url http://aibspi:3141/aibs/packages
+--trusted-host aibspi
 --extra-index-url https://pypi.org/simple
 psycopg2 
 pymongo>=3.0.0 

@@ -132,7 +132,7 @@ class Rig(Enum):
         return None
         
     @staticmethod
-    def rig_str_to_int(rig:str) -> Union[int,None]:
+    def rig_str_to_int(rig:str) -> Union[str,None]:
         # extract RIG_ID from str if possible
         str_match = re.search(R"NP.[\d]+", rig)
         if str_match:

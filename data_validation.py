@@ -922,32 +922,40 @@ class DataValidationFile(abc.ABC):
         """Test equality of two DataValidationFile objects"""
         # size and path fields are required entries in a DVF entry in database -
         # checksum is optional, so we need to check for it in both objects
+       
+        # -make use of addtl file check: depends on files existing so isn't always
+        # reliable
+        if self.path.exists() and other.path.exists():
+            samefile = self.path.samefile(other.path) 
+        else:
+            samefile = None
+            
         if (
             self.checksum
             and other.checksum
             and (self.checksum == other.checksum)
             and (self.size == other.size)
-            and (self.path.as_posix().lower() == other.path.as_posix().lower())
-        ):  # self
+            and (self.path.as_posix().lower() == other.path.as_posix().lower() or samefile is True)
+        ) and samefile is not False:  # self
             return self.__class__.Match.SELF.value
 
         #! watch out: SELF_MISSING_SELF and SELF_MISSING_OTHER
         # depend on the order of objects in the inequality
         elif (
             (self.size == other.size)
-            and (self.path.as_posix().lower() == other.path.as_posix().lower())
+            and (self.path.as_posix().lower() == other.path.as_posix().lower() or samefile is True)
             and (not self.checksum)
             and (other.checksum)
-        ):  # self without checksum confirmation (self missing)
+        ) and samefile is not False:  # self without checksum confirmation (self missing)
             return self.__class__.Match.SELF_MISSING_SELF.value
         #! watch out: SELF_MISSING_SELF and SELF_MISSING_OTHER
         # depend on the order of objects in the inequality
         elif (
             (self.size == other.size)
-            and (self.path.as_posix().lower() == other.path.as_posix().lower())
+            and (self.path.as_posix().lower() == other.path.as_posix().lower() or samefile is True)
             and (self.checksum)
             and not (other.checksum)
-        ):  # self without checksum confirmation (other missing)
+        ) and samefile is not False:  # self without checksum confirmation (other missing)
             return self.__class__.Match.SELF_MISSING_OTHER.value
 
         elif (self.size != other.size or self.checksum != other.checksum) and (
@@ -961,7 +969,7 @@ class DataValidationFile(abc.ABC):
             and (self.name.lower() == other.name.lower())
             and (self.path.as_posix().lower() != other.path.as_posix().lower())
             and (self.probe_dir == other.probe_dir)
-        ):  # copy without checksum confirmation (both missing)
+        ) and samefile is not True:  # copy without checksum confirmation (both missing)
             return self.__class__.Match.COPY_MISSING_BOTH.value
 
         elif (
@@ -970,7 +978,7 @@ class DataValidationFile(abc.ABC):
             and (self.name.lower() == other.name.lower())
             and (self.path.as_posix().lower() != other.path.as_posix().lower())
             and (self.probe_dir == other.probe_dir)
-        ):  # copy without checksum confirmation (other missing)
+        ) and samefile is not True:  # copy without checksum confirmation (other missing)
             return self.__class__.Match.COPY_MISSING_OTHER.value
 
         elif (
@@ -979,7 +987,7 @@ class DataValidationFile(abc.ABC):
             and (self.name.lower() == other.name.lower())
             and (self.path.as_posix().lower() != other.path.as_posix().lower())
             and (self.probe_dir == other.probe_dir)
-        ):  # copy without checksum confirmation (self missing)
+        ) and samefile is not True:  # copy without checksum confirmation (self missing)
             return self.__class__.Match.COPY_MISSING_SELF.value
 
         elif (
@@ -988,7 +996,7 @@ class DataValidationFile(abc.ABC):
             and (self.name.lower() != other.name.lower())
             and (self.path.as_posix().lower() != other.path.as_posix().lower())
             and (self.probe_dir == other.probe_dir)
-        ):  # valid copy, not self, different name
+        ) and samefile is not True:  # valid copy, not self, different name
             return self.__class__.Match.POSSIBLE_COPY_RENAMED.value
 
         elif (
@@ -998,7 +1006,7 @@ class DataValidationFile(abc.ABC):
             and (self.name.lower() == other.name.lower())
             and (self.path.as_posix().lower() != other.path.as_posix().lower())
             and (self.probe_dir == other.probe_dir)
-        ):  # valid copy, not self, same name
+        ) and samefile is not True:  # valid copy, not self, same name
             return self.__class__.Match.VALID_COPY.value
 
         elif (
@@ -1009,7 +1017,7 @@ class DataValidationFile(abc.ABC):
             and (self.name.lower() != other.name.lower())
             and (self.path.as_posix().lower() != other.path.as_posix().lower())
             and (self.probe_dir == other.probe_dir)
-        ):  # valid copy, different name
+        ) and samefile is not True:  # valid copy, different name
             return self.__class__.Match.VALID_COPY_RENAMED.value
 
         elif (
@@ -1018,20 +1026,20 @@ class DataValidationFile(abc.ABC):
             and (self.name.lower() == other.name.lower())
             and (self.path.as_posix().lower() != other.path.as_posix().lower())
             and (self.probe_dir == other.probe_dir)
-        ):  # invalid copy ( multiple categories)
+        ) and samefile is not True:  # invalid copy ( multiple categories)
 
             if (
                 (self.size != other.size)
                 and (self.checksum != other.checksum)
                 and (self.probe_dir == other.probe_dir)
-            ):  # out-of-sync copy or incorrect data named as copy
+            ) and samefile is not True:  # out-of-sync copy or incorrect data named as copy
                 return self.__class__.Match.COPY_UNSYNCED_DATA.value
 
             if (
                 (self.size != other.size)
                 and (self.checksum == other.checksum)
                 and (self.probe_dir == other.probe_dir)
-            ):  # out-of-sync copy or incorrect data named as copy
+            ) and samefile is not True:  # out-of-sync copy or incorrect data named as copy
                 # plus checksum which needs updating
                 # (different size with same checksum isn't possible)
                 return self.__class__.Match.COPY_UNSYNCED_CHECKSUM.value
@@ -1040,7 +1048,7 @@ class DataValidationFile(abc.ABC):
                 (self.size == other.size)
                 and (self.checksum != other.checksum)
                 and (self.probe_dir == other.probe_dir)
-            ):  # possible data corruption, or checksum needs updating
+            ) and samefile is not True:  # possible data corruption, or checksum needs updating
                 return self.__class__.Match.COPY_UNSYNCED_OR_CORRUPT_DATA.value
 
         elif (
@@ -1049,7 +1057,7 @@ class DataValidationFile(abc.ABC):
             and (self.checksum == other.checksum)
             and (self.size != other.size)
             and (self.name.lower() != other.name.lower())
-        ):  # possible checksum collision
+        ) and samefile is not True:  # possible checksum collision
             return self.__class__.Match.CHECKSUM_COLLISION.value
 
         elif (
@@ -1058,7 +1066,7 @@ class DataValidationFile(abc.ABC):
             and (self.checksum != other.checksum)
             and (self.size != other.size)
             and (self.name.lower() != other.name.lower())
-        ):  # apparently unrelated files (different name && checksum && size)
+        ) and samefile is not True:  # apparently unrelated files (different name && checksum && size)
             return self.__class__.Match.UNRELATED.value
 
         else:  # insufficient information

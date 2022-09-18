@@ -1279,7 +1279,7 @@ class MongoDataValidationDB(DataValidationDB):
             # make a new object with the default DVFile class
             try:
                 file = cls.DVFile(path=path, size=size, checksum=checksum)
-            except ValueError: # SessionError-subclass may be raised if no session string in path
+            except SessionError: # if no session string in path
                 return
             
         if not isinstance(file, SessionFile):

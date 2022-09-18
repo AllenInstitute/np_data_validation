@@ -1358,6 +1358,15 @@ class MongoDataValidationDB(DataValidationDB):
                     hint="session_id",
                 )
             )
+            # perform a quick filter on the list before converting to DVFiles,
+            # skip path, which may be normalized by DVFile constructor
+            entries = [
+                e 
+                for e in entries 
+                if (
+                    e["checksum"] == file.checksum
+                    or e["size"] == file.size
+                )] 
             
         elif isinstance(file, OrphanedDVFile): 
             # for non-SessionFile DVFile objects, we want to find all matches possible

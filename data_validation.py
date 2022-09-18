@@ -1378,7 +1378,7 @@ class MongoDataValidationDB(DataValidationDB):
             if file.checksum:
                 entries += list(
                 cls.db.find(
-                    {"checksum": file.checksum},
+                    {"checksum": file.checksum, "type":file.checksum_name,},
                 ),
             )
             if file.size:

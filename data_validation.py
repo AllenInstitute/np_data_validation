@@ -1284,30 +1284,23 @@ class MongoDataValidationDB(DataValidationDB):
     ):
         """Add an entry to the database """
         if not isinstance(file, DataValidationFile):
-            if isinstance(file, str):  # path provided as positional argument
+            
+            if isinstance(file, (str, pathlib.Path)):  # path provided as positional argument
                 path = file
-            # make a new object with the default DVFile class
-            try:
+            try: # make a new object with the default DVFile class
                 file = cls.DVFile(path=path, size=size, checksum=checksum)
             except SessionError: # if no session string in path
+                file = OrphanedDVFile(path=path, size=size, checksum=checksum)
+            except Exception: # anything else we'd rather not halt the program
                 return
             logging.debug(f"No DVFile provided to add_file() - created {file.__class__.__name__} from path")
             
-        if not isinstance(file, SessionFile):
-            # non-session files currently not allowed in db
-            return
-        
-        # check the database for similar entries
-        matches = cls.get_matches(file)
-        match_type = [(file == match) for match in matches] if matches else []
-
-        # if we have no checksum we won't enter in the database
         if not file.checksum:
             logging.debug(f"Checksum missing - not entered into MongoDB {file.path}")
             return
 
         # if an entry for the same file exists but is out of date, we'll replace it
-        # otherwise, a new entry is added the database (upsert=True)
+        # otherwise, a new entry is added the database (via upsert=True)
         new_db_entry = {
             "path": file.path.as_posix(),
             "size": file.size,
@@ -1340,7 +1333,16 @@ class MongoDataValidationDB(DataValidationDB):
         checksum: str = None,
         match: Union[int, Type[enum.IntEnum]] = None,
     ) -> List[DataValidationFile]:  # , Optional[List[int]]:
-        """search database for entries that match any of the given arguments"""
+        """Search database for entries that match any of the given arguments.
+        
+        - search is accelerated by using the session ID as a hint if available
+        - if we search with a sessionID available (i.e. a SessionFile), we'll only
+          return matches with the same sessionID
+        - if we search without a sessionID, matches can be made with entries that have
+          no sessionID field (e.g. self)
+        - this should work because we generally want to look 'upwards' in the data
+          transfer ladder to lims; files without a sessionID are on the bottom rung  
+        """
         if not file or not isinstance(file, DataValidationFile): 
             if isinstance(file, str):  # path provided as positional argument
                 path = file
@@ -1357,7 +1359,7 @@ class MongoDataValidationDB(DataValidationDB):
             # we're allowing OrphanedDVFiles 
             entries = list(
                 cls.db.find(
-                    {"session_id": file.session.id, "type": file.checksum_name,},
+                    {"session_id": file.session.id,},
                     hint="session_id",
                 )
             )
@@ -1381,7 +1383,7 @@ class MongoDataValidationDB(DataValidationDB):
             if file.checksum:
                 entries += list(
                 cls.db.find(
-                    {"checksum": file.checksum, "type":file.checksum_name,},
+                    {"checksum": file.checksum,},
                 ),
             )
             if file.size:
@@ -1394,11 +1396,24 @@ class MongoDataValidationDB(DataValidationDB):
         if not entries:
             return None
 
+        #* updated Sep '22: we now return set of mixed DVFile types, depending on the
+        #  checksum type stored in the database. similar types aren't enforced in DVFile
+        #  comparisons becauses collisions across different types (given matching paths,
+        #  sizes, sessionIDs etc.) are as approx. as likely as collisions within a
+        # type, so we can just compare across DVFile types freely
         matches = set(
-            file.__class__(
+            [available_DVFiles[entry["type"]](
                 path=entry["path"], checksum=entry["checksum"], size=entry["size"],
             )
-            for entry in entries if entry["type"] == file.checksum_name
+            for entry in entries if entry.get("session_id",False)]
+            
+            + 
+            
+            # below list will be empty when searching with a SessionFile
+            [OrphanedDVFile(
+                path=entry["path"], checksum=entry["checksum"], size=entry["size"],
+            )
+            for entry in entries if not entry.get("session_id",False)]
         )
 
         def filter_on_match_type(match_type: int) -> List[DataValidationFile]:

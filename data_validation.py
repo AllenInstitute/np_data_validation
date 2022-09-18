@@ -1306,13 +1306,16 @@ class MongoDataValidationDB(DataValidationDB):
         # if an entry for the same file exists but is out of date, we'll replace it
         # otherwise, a new entry is added the database (upsert=True)
         new_db_entry = {
-            "session_id": file.session.id,
             "path": file.path.as_posix(),
             "size": file.size,
             "checksum": file.checksum,
             "type": file.checksum_name,
         }
         
+        if isinstance(file, SessionFile):
+            # non-session files are now allowed in db
+            new_db_entry["session_id"] = file.session.id
+
         # * adding hostnames for future comparison of local paths
         new_db_entry_with_hostname = new_db_entry.copy()
         new_db_entry_with_hostname["hostname"] = socket.gethostname()

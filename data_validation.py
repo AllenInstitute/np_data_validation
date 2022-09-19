@@ -867,9 +867,18 @@ class DataValidationFile(abc.ABC):
     @enum.unique
     class Match(enum.IntFlag):
         """Integer enum as a shorthand for DataValidationFile comparison.
-        - test for (file==other)>10 for matches of interest
-        - >15 for possible copies and >20 for valid backups
+        - test for (file==other)
+            5-10 for self
+            >10 for matches of interest
+            >15 for possible backups (1 or both checksums reqd.)
+            >20 for valid backups
+        
+        Note: some of the more detailed interpretations require checksum_name to be equal, so
+        conditions need updating (Sept'22), but the most used comparisons are still correct:
+        self (5/6/7), possible copies (>15), valid backups (>20)
         """
+        # TODO update to consider checksum_name == checksum_name
+        
 
         # =======================================================================================
         # files with nothing in common - these comparisons are generally not useful & filtered out

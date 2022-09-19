@@ -1,24 +1,19 @@
 import configparser
-import itertools
 import logging
 import os
 import pathlib
 import pprint
+import threading
 
 import data_validation as dv
 import strategies
 
 CONFIG_FILE = "clear_dirs.cfg" # should live in the same cwd as clear_dirs.py
+DB = dv.MongoDataValidationDB()
 
-def config_from_file():
+def config_dirs_from_file():
     config = configparser.ConfigParser()
     config.read(os.path.join(os.path.dirname(__file__), CONFIG_FILE))
-    
-    return config
-
-def clear_dirs():
-
-    config = config_from_file()
     
     # current config for clear_dirs has some universal settings, plus additional dirs that can be cleared for each rig computer type (acq, sync, mon..)
     dirs = [
@@ -37,8 +32,60 @@ def clear_dirs():
                 if d != ""
             ]
 
+    return config, dirs
+
+def delete_if_valid_backup_in_db(result, idx, file_inst, db, backup_paths):
+
+    files_bytes = strategies.delete_if_valid_backup_in_db(
+        file_inst, db, backup_paths
+    )
+    result[idx] = files_bytes
+    
+def clear_orphan_files():
+    
+    config, dirs = config_dirs_from_file()
+    
     if not dirs:
         return
+    # deal with non-session files/dirs ----------------------------------------------------- #
+    
+    def delete_if_valid_copy_in_db(path):
+        if dv.Session.folder(str(path)):
+            # skip files/dirs with session folder string in path
+            return
+        if path.is_dir():
+            return # TODO choose: walk directories or skip them
+                
+        # currrently only one option for non-session files:
+        file = dv.OrphanedDVFile(path=path)
+        if file.size < 1024 ** 2:
+            return # TODO remove at some point - need to clear data right now 
+        file = strategies.generate_checksum(file, DB)
+        matches = DB.get_matches(file=file)
+        if not matches:
+            return
+        for m in matches:
+            if (file==m)>=file.Match.VALID_COPY_RENAMED: # we filtered for this in call to get_matches but double-check
+                if any(bkup in str(m.path) for bkup in ["np-exp", "prod0"]):
+                    print(f"Deleting {file.path} because it matches {m.path}: {file.Match(file==m).name}")
+                    file.path.unlink()
+                    return
+                    
+    for path in [p for d in dirs for p in d.iterdir()]:
+        thread = threading.Thread(
+            target=delete_if_valid_copy_in_db,
+            args=(path,),
+        )
+        thread.start()
+        
+            
+def clear_dirs():
+
+    config, dirs = config_dirs_from_file()
+    
+    if not dirs:
+        return
+    
 
     regenerate_threshold_bytes = config["options"].getint(
         "regenerate_threshold_bytes", fallback=1024 ** 2
@@ -86,5 +133,10 @@ def clear_dirs():
     print(
         f"{divider}Finished clearing session folders.\n{len(total_deleted_bytes)} files deleted | {sum(total_deleted_bytes) / 1024**3 :.1f} GB recovered\n"
     )
+    if only_session_folders:
+        return
+    
+
 if __name__ == "__main__":
-    clear_dirs()
+    # clear_dirs()
+    clear_orphan_files()

@@ -146,6 +146,9 @@ logHandler.formatter = logging.Formatter(
 log.addHandler(logHandler)
 log.setLevel(logging.INFO)  # may be overwritten elsewhere
 
+MONGO_COLLECTION: pymongo.collection.Collection = pymongo.MongoClient("mongodb://10.128.50.77:27017/").prod.snapshots
+# defining the collection here opens the db connection just once per session (instead of
+# repeated open/close for every access) as recommended by MongoDB docs 
 
 class SessionError(ValueError):
     """Raised when a session folder string ([lims-id]_[mouse-id]_[date]) can't be found in a
@@ -1280,8 +1283,7 @@ class MongoDataValidationDB(DataValidationDB):
     """
 
     DVFile: DataValidationFile = CRC32DataValidationFile  # default
-    db_address = "mongodb://10.128.50.77:27017/"
-    db = pymongo.MongoClient(db_address).prod.snapshots
+    db = MONGO_COLLECTION # moved to outer so connection to client is made once per session
 
     @classmethod
     def add_file(
@@ -1310,6 +1312,7 @@ class MongoDataValidationDB(DataValidationDB):
 
         # search for the fields that define a unique entry in db, so only one
         # entry can be returned/replaced
+        #* MongoDB has a unique index on path + type, so unique entries are enforced
         existing_entry = {
             "path": file.path.as_posix(),
             "type": file.checksum_name,

@@ -1308,27 +1308,36 @@ class MongoDataValidationDB(DataValidationDB):
             logging.debug(f"Checksum missing - not entered into MongoDB {file.path}")
             return
 
+        # search for the fields that define a unique entry in db, so only one
+        # entry can be returned/replaced
+        existing_entry = {
+            "path": file.path.as_posix(),
+            "type": file.checksum_name,
+            # TODO add hostname if location is on local machine, or convert all paths
+        }
+        
         # if an entry for the same file exists but is out of date, we'll replace it
         # otherwise, a new entry is added the database (via upsert=True)
-        new_db_entry = {
+        new_entry = {
             "path": file.path.as_posix(),
-            "size": file.size,
             "checksum": file.checksum,
             "type": file.checksum_name,
         }
         
+        if file.size is not None:
+            new_entry["size"] = file.size 
+                    
         if isinstance(file, SessionFile):
             # non-session files are now allowed in db
-            new_db_entry["session_id"] = file.session.id
+            new_entry["session_id"] = file.session.id
 
         # * adding hostnames for future comparison of local paths
-        new_db_entry_with_hostname = new_db_entry.copy()
-        new_db_entry_with_hostname["hostname"] = socket.gethostname()
+        new_entry["hostname"] = socket.gethostname()
 
         cls.db.replace_one(
-            filter=new_db_entry,
-            replacement=new_db_entry_with_hostname,
-            upsert=True,
+            filter=existing_entry, # search for this
+            replacement=new_entry, 
+            upsert=True, # add new entry if not found
             hint="session_id",
         )
         logging.debug(f"Added {file.name} to MongoDB")

@@ -1337,13 +1337,22 @@ class MongoDataValidationDB(DataValidationDB):
         # * adding hostnames for future comparison of local paths
         new_entry["hostname"] = socket.gethostname()
 
-        cls.db.replace_one(
+        result = cls.db.replace_one(
             filter=existing_entry, # search for this
             replacement=new_entry, 
             upsert=True, # add new entry if not found
             hint="session_id",
         )
-        logging.debug(f"Added {file.name} to MongoDB")
+        if not result.acknowledged:
+            logging.info(f"Failed to add to MongoDB {file}")
+            return
+        if result.matched_count > 1:
+            logging.warning(f"Multiple {file.type} entries for {file.path} in MongoDB - should be unique")
+            return
+        if result.upserted_id:   
+            logging.info(f"Added {file.name} to MongoDB with {file.checksum_name} checksum")
+        elif result.modified_count:
+            logging.debug(f"Updated {file.name} in MongoDB with {file.checksum_name} checksum")
 
     @classmethod
     def get_matches(

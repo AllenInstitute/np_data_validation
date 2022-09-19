@@ -1374,6 +1374,8 @@ class MongoDataValidationDB(DataValidationDB):
                 # create non-SessionFile DVFile object, use custom get_matches method
                 file = OrphanedDVFile(path=path, size=size, checksum=checksum)
         
+        match = [match] if match and not isinstance(match, list) else match
+
         entries = []
         if isinstance(file, SessionFile): # expected behavior normally 
             # TODO update some DataValidationFile type guards to SessionFile, now that
@@ -1386,13 +1388,25 @@ class MongoDataValidationDB(DataValidationDB):
             )
             # perform a quick filter on the list before converting to DVFiles,
             # skip path, which may be normalized by DVFile constructor
+            if match and all(m in [file.Match.SELF, file.Match.SELF_MISSING_SELF] for m in match):
             entries = [
                 e 
                 for e in entries 
                 if (
-                    e["checksum"] == file.checksum
+                        e["path"] == file.path.as_posix()
                     or e["size"] == file.size
-                )] 
+                     or e["checksum"] == file.checksum
+                    )
+                ]
+            elif match and all(m in [file.Match.VALID_COPY, file.Match.VALID_COPY_RENAMED] for m in match):
+                entries = [
+                    e 
+                    for e in entries 
+                    if (
+                        e["size"] == file.size
+                    and e["checksum"] == file.checksum
+                    )
+                ]
             
         elif isinstance(file, OrphanedDVFile): 
             # for non-SessionFile DVFile objects, we want to find all matches possible
@@ -1449,7 +1463,6 @@ class MongoDataValidationDB(DataValidationDB):
             return [o for o in matches if (file == o) > 0]
 
         filtered_matches = []
-        match = [match] if not isinstance(match, list) else match
         for m in match:
             filtered_matches += filter_on_match_type(m)
         return filtered_matches

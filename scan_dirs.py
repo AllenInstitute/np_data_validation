@@ -38,10 +38,15 @@ def main(dirs:list[str]=None):
         if path.is_dir():
             continue
         
+        try:
+            file = dv.SHA3_256DataValidationFile(path)
+        except dv.SessionError:
+            file = dv.OrphanedDVFile(path)
+
         threads = []
         t = threading.Thread(
             target=strategies.generate_checksum_if_not_in_db,
-            args=(dv.SHA3_256DataValidationFile(path), dv.MongoDataValidationDB(),),
+            args=(file, dv.MongoDataValidationDB(),),
         )
 
         threads.append(t)

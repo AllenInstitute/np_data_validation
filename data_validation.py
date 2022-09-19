@@ -138,7 +138,7 @@ import strategies  # for interacting with database
 log = logging.getLogger()
 pathlib.Path("./logs").mkdir(parents=True, exist_ok=True)
 logHandler = logging.handlers.RotatingFileHandler(
-    "./logs/clear_dirs.log", maxBytes=10000, backupCount=10,
+    "./logs/clear_dirs.log", maxBytes=10*1024**2, backupCount=50,
 )
 logHandler.formatter = logging.Formatter(
     "%(asctime)s %(message)s", datefmt="%Y-%m-%d %H:%M"

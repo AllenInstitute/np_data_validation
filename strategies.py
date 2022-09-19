@@ -143,12 +143,25 @@ def exchange_if_checksum_in_db(
     matches = db.get_matches(subject, match=accepted_matches)
 
     if not matches:
+        dv.logging.debug(f"No matches found for {subject.path} in db")
         return subject
 
+    checksums_equal = all(m.checksum == matches[0].checksum for m in matches)
+    types_equal = all(m.__class__ == matches[0].__class__ for m in matches)
     if len(matches) == 1:
         return matches[0]
-    else:
-        # multiple matches with different checksums: should regenerate checksum
+    if len(matches) > 1 and checksums_equal and types_equal:
+        return matches[0]
+    if len(matches) > 1 and not types_equal:
+        for m in matches:
+            if m.__class__ == subject.__class__:
+                return m # subject class may have been chosen for a particular reason
+            # next follow the order specified
+            for cls in dv.available_DVFiles.values():
+                if m.__class__ == cls:
+                    return m
+                
+    dv.logging.info(f"Multiple matches for {subject} in db - could not determine SELF for exchange")
         return subject
 
 

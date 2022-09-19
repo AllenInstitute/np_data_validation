@@ -138,7 +138,9 @@ import strategies  # for interacting with database
 log = logging.getLogger()
 pathlib.Path("./logs").mkdir(parents=True, exist_ok=True)
 logHandler = logging.handlers.RotatingFileHandler(
-    "./logs/clear_dirs.log", maxBytes=10*1024**2, backupCount=50,
+    "./logs/clear_dirs.log",
+    maxBytes=10 * 1024**2,
+    backupCount=50,
 )
 logHandler.formatter = logging.Formatter(
     "%(asctime)s %(message)s", datefmt="%Y-%m-%d %H:%M"
@@ -146,9 +148,12 @@ logHandler.formatter = logging.Formatter(
 log.addHandler(logHandler)
 log.setLevel(logging.INFO)  # may be overwritten elsewhere
 
-MONGO_COLLECTION: pymongo.collection.Collection = pymongo.MongoClient("mongodb://10.128.50.77:27017/").prod.snapshots
+MONGO_COLLECTION: pymongo.collection.Collection = pymongo.MongoClient(
+    "mongodb://10.128.50.77:27017/"
+).prod.snapshots
 # defining the collection here opens the db connection just once per session (instead of
 # repeated open/close for every access) as recommended by MongoDB docs 
+
 
 class SessionError(ValueError):
     """Raised when a session folder string ([lims-id]_[mouse-id]_[date]) can't be found in a
@@ -193,7 +198,7 @@ def progressbar(
         file.flush()
 
 
-def chunk_crc32(file: Any = None, size=None, *args,**kwargs) -> str:
+def chunk_crc32(file: Any = None, size=None, *args, **kwargs) -> str:
     """generate crc32 with for loop to read large files in chunks"""
     if isinstance(file, str):
         pass
@@ -247,8 +252,13 @@ def test_crc32_function(func, *args, **kwargs):
         f.write(b"foo")
     assert func(temp) == "8C736521", "checksum function incorrect"
 
+
 def chunk_hashlib(
-    path: Union[str, pathlib.Path], hasher_cls=hashlib.sha3_256, blocks_per_chunk=128, *args,**kwargs
+    path: Union[str, pathlib.Path],
+    hasher_cls=hashlib.sha3_256,
+    blocks_per_chunk=128,
+    *args,
+    **kwargs,
 ) -> str:
     """
     Use a hashing function on a file as per lims2 copy tool, but return the 32-len
@@ -260,8 +270,9 @@ def chunk_hashlib(
             hasher.update(chunk)
     return hasher.hexdigest()
 
+
 def valid_sha256_checksum(value: str) -> bool:
-    """Validate sha256/sha3_256 checksum """
+    """Validate sha256/sha3_256 checksum"""
     if (
         isinstance(value, str)
         and len(value) == 64
@@ -269,6 +280,7 @@ def valid_sha256_checksum(value: str) -> bool:
     ):
         return True
     return False
+
 
 def test_sha256_function(func, *args, **kwargs):
     temp = os.path.join(
@@ -346,9 +358,7 @@ class Session:
             self.date = lims_dg.data_dict["datestring"]
             self.folder = ("_").join([self.id, self.mouse, self.date])
         else:
-            raise SessionError(
-                f"{path} does not contain a valid session folder string"
-            )
+            raise SessionError(f"{path} does not contain a valid session folder string")
 
     @classmethod
     def folder(cls, path: Union[str, pathlib.Path]) -> Union[str, None]:
@@ -670,7 +680,7 @@ class DataValidationFile(abc.ABC):
 
     # TODO add hostname property when path is local
 
-    checksum_threshold: int = 50 * 1024 ** 2
+    checksum_threshold: int = 50 * 1024**2
     # filesizes below this will have checksums auto-generated on init
 
     checksum_name: str = None
@@ -880,9 +890,9 @@ class DataValidationFile(abc.ABC):
         conditions need updating (Sept'22), but the most used comparisons are still correct:
         self (5/6/7), possible copies (>15), valid backups (>20)
         """
+
         # TODO update to consider checksum_name == checksum_name
         
-
         # =======================================================================================
         # files with nothing in common - these comparisons are generally not useful & filtered out
 
@@ -947,7 +957,10 @@ class DataValidationFile(abc.ABC):
             and other.checksum
             and (self.checksum == other.checksum)
             and (self.size == other.size)
-            and (self.path.as_posix().lower() == other.path.as_posix().lower() or samefile is True)
+            and (
+                self.path.as_posix().lower() == other.path.as_posix().lower()
+                or samefile is True
+            )
         ) and samefile is not False:  # self
             return self.__class__.Match.SELF.value
 
@@ -955,7 +968,10 @@ class DataValidationFile(abc.ABC):
         # depend on the order of objects in the inequality
         elif (
             (self.size == other.size)
-            and (self.path.as_posix().lower() == other.path.as_posix().lower() or samefile is True)
+            and (
+                self.path.as_posix().lower() == other.path.as_posix().lower()
+                or samefile is True
+            )
             and (not self.checksum)
             and (other.checksum)
         ) and samefile is not False:  # self without checksum confirmation (self missing)
@@ -964,7 +980,10 @@ class DataValidationFile(abc.ABC):
         # depend on the order of objects in the inequality
         elif (
             (self.size == other.size)
-            and (self.path.as_posix().lower() == other.path.as_posix().lower() or samefile is True)
+            and (
+                self.path.as_posix().lower() == other.path.as_posix().lower()
+                or samefile is True
+            )
             and (self.checksum)
             and not (other.checksum)
         ) and samefile is not False:  # self without checksum confirmation (other missing)
@@ -1110,8 +1129,9 @@ class CRC32DataValidationFile(DataValidationFile, SessionFile):
         DataValidationFile.__init__(self, path=path, checksum=checksum, size=size)
         SessionFile.__init__(self, path)
 
+
 class SHA256DataValidationFile(DataValidationFile, SessionFile):
-    hashlib_func = functools.partial(chunk_hashlib,hasher_cls=hashlib.sha256)
+    hashlib_func = functools.partial(chunk_hashlib, hasher_cls=hashlib.sha256)
     
     checksum_threshold: int = 0  # don't generate checksum for any files by default
     checksum_name: str = "sha256"
@@ -1126,7 +1146,7 @@ class SHA256DataValidationFile(DataValidationFile, SessionFile):
 
 
 class SHA3_256DataValidationFile(DataValidationFile, SessionFile):
-    hashlib_func = functools.partial(chunk_hashlib,hasher_cls=hashlib.sha3_256)
+    hashlib_func = functools.partial(chunk_hashlib, hasher_cls=hashlib.sha3_256)
     
     checksum_threshold: int = 0  # don't generate checksum for any files by default
     checksum_name: str = "sha3_256"
@@ -1145,11 +1165,17 @@ class SHA3_256DataValidationFile(DataValidationFile, SessionFile):
 class OrphanedDVFile(DataValidationFile):
     """Files with no session identifier, containing only enough information to search
     the database for matches"""
+
     checksum_threshold: int = 0  # don't generate checksum for any files by default
     checksum_name: str = SHA3_256DataValidationFile.checksum_name
-    checksum_generator: Callable[[str], str] = SHA3_256DataValidationFile.checksum_generator
+    checksum_generator: Callable[
+        [str], str
+    ] = SHA3_256DataValidationFile.checksum_generator
     checksum_test: Callable[[Callable], None] = SHA3_256DataValidationFile.checksum_test
-    checksum_validate: Callable[[str], bool] = SHA3_256DataValidationFile.checksum_validate
+    checksum_validate: Callable[
+        [str], bool
+    ] = SHA3_256DataValidationFile.checksum_validate
+
     def __init__(self, path: str = None, checksum: str = None, size: int = None):
         DataValidationFile.__init__(self, path=path, checksum=checksum, size=size)
         
@@ -1283,7 +1309,7 @@ class MongoDataValidationDB(DataValidationDB):
     """
 
     DVFile: DataValidationFile = CRC32DataValidationFile  # default
-    db = MONGO_COLLECTION # moved to outer so connection to client is made once per session
+    db = MONGO_COLLECTION  # moved to outer so connection to client is made once per session
 
     @classmethod
     def add_file(
@@ -1293,18 +1319,22 @@ class MongoDataValidationDB(DataValidationDB):
         size: int = None,
         checksum: str = None,
     ):
-        """Add an entry to the database """
+        """Add an entry to the database"""
         if not isinstance(file, DataValidationFile):
             
-            if isinstance(file, (str, pathlib.Path)):  # path provided as positional argument
+            if isinstance(
+                file, (str, pathlib.Path)
+            ):  # path provided as positional argument
                 path = file
-            try: # make a new object with the default DVFile class
+            try:  # make a new object with the default DVFile class
                 file = cls.DVFile(path=path, size=size, checksum=checksum)
-            except SessionError: # if no session string in path
+            except SessionError:  # if no session string in path
                 file = OrphanedDVFile(path=path, size=size, checksum=checksum)
-            except Exception: # anything else we'd rather not halt the program
+            except Exception:  # anything else we'd rather not halt the program
                 return
-            logging.debug(f"No DVFile provided to add_file() - created {file.__class__.__name__} from path")
+            logging.debug(
+                f"No DVFile provided to add_file() - created {file.__class__.__name__} from path"
+            )
             
         if not file.checksum:
             logging.debug(f"Checksum missing - not entered into MongoDB {file.path}")
@@ -1312,7 +1342,7 @@ class MongoDataValidationDB(DataValidationDB):
 
         # search for the fields that define a unique entry in db, so only one
         # entry can be returned/replaced
-        #* MongoDB has a unique index on path + type, so unique entries are enforced
+        # * MongoDB has a unique index on path + type, so unique entries are enforced
         existing_entry = {
             "path": file.path.as_posix(),
             "type": file.checksum_name,
@@ -1338,21 +1368,27 @@ class MongoDataValidationDB(DataValidationDB):
         new_entry["hostname"] = socket.gethostname()
 
         result = cls.db.replace_one(
-            filter=existing_entry, # search for this
+            filter=existing_entry,  # search for this
             replacement=new_entry, 
-            upsert=True, # add new entry if not found
+            upsert=True,  # add new entry if not found
             hint="session_id",
         )
         if not result.acknowledged:
             logging.info(f"Failed to add to MongoDB {file}")
             return
         if result.matched_count > 1:
-            logging.warning(f"Multiple {file.type} entries for {file.path} in MongoDB - should be unique")
+            logging.warning(
+                f"Multiple {file.type} entries for {file.path} in MongoDB - should be unique"
+            )
             return
         if result.upserted_id:   
-            logging.info(f"Added {file.name} to MongoDB with {file.checksum_name} checksum")
+            logging.info(
+                f"Added {file.name} to MongoDB with {file.checksum_name} checksum"
+            )
         elif result.modified_count:
-            logging.debug(f"Updated {file.name} in MongoDB with {file.checksum_name} checksum")
+            logging.debug(
+                f"Updated {file.name} in MongoDB with {file.checksum_name} checksum"
+            )
 
     @classmethod
     def get_matches(
@@ -1386,18 +1422,22 @@ class MongoDataValidationDB(DataValidationDB):
         match = [match] if match and not isinstance(match, list) else match
 
         entries = []
-        if isinstance(file, SessionFile): # expected behavior normally 
+        if isinstance(file, SessionFile):  # expected behavior normally
             # TODO update some DataValidationFile type guards to SessionFile, now that
             # we're allowing OrphanedDVFiles 
             entries = list(
                 cls.db.find(
-                    {"session_id": file.session.id,},
+                    {
+                        "session_id": file.session.id,
+                    },
                     hint="session_id",
                 )
             )
             # perform a quick filter on the list before converting to DVFiles,
             # skip path, which may be normalized by DVFile constructor
-            if match and all(m in [file.Match.SELF, file.Match.SELF_MISSING_SELF] for m in match):
+            if match and all(
+                m in [file.Match.SELF, file.Match.SELF_MISSING_SELF] for m in match
+            ):
             entries = [
                 e 
                 for e in entries 
@@ -1407,14 +1447,14 @@ class MongoDataValidationDB(DataValidationDB):
                      or e["checksum"] == file.checksum
                     )
                 ]
-            elif match and all(m in [file.Match.VALID_COPY, file.Match.VALID_COPY_RENAMED] for m in match):
+            elif match and all(
+                m in [file.Match.VALID_COPY, file.Match.VALID_COPY_RENAMED]
+                for m in match
+            ):
                 entries = [
                     e 
                     for e in entries 
-                    if (
-                        e["size"] == file.size
-                    and e["checksum"] == file.checksum
-                    )
+                    if (e["size"] == file.size and e["checksum"] == file.checksum)
                 ]
             
         elif isinstance(file, OrphanedDVFile): 
@@ -1423,11 +1463,14 @@ class MongoDataValidationDB(DataValidationDB):
                 entries += list(
                 cls.db.find(
                     {"path": file.path.as_posix()},
-                ))
+                    )
+                )
             if file.checksum:
                 entries += list(
                 cls.db.find(
-                    {"checksum": file.checksum,},
+                        {
+                            "checksum": file.checksum,
+                        },
                 ),
             )
             if file.size:
@@ -1440,24 +1483,32 @@ class MongoDataValidationDB(DataValidationDB):
         if not entries:
             return None
 
-        #* updated Sep '22: we now return set of mixed DVFile types, depending on the
+        # * updated Sep '22: we now return set of mixed DVFile types, depending on the
         #  checksum type stored in the database. similar types aren't enforced in DVFile
         #  comparisons becauses collisions across different types (given matching paths,
         #  sizes, sessionIDs etc.) are as approx. as likely as collisions within a
         # type, so we can just compare across DVFile types freely
         matches = set(
-            [available_DVFiles[entry["type"]](
-                path=entry["path"], checksum=entry["checksum"], size=entry["size"],
+            [
+                available_DVFiles[entry["type"]](
+                    path=entry["path"],
+                    checksum=entry["checksum"],
+                    size=entry["size"],
             )
-            for entry in entries if entry.get("session_id",False)]
-            
+                for entry in entries
+                if entry.get("session_id", False)
+            ]
             + 
-            
             # below list will be empty when searching with a SessionFile
-            [OrphanedDVFile(
-                path=entry["path"], checksum=entry["checksum"], size=entry["size"],
+            [
+                OrphanedDVFile(
+                    path=entry["path"],
+                    checksum=entry["checksum"],
+                    size=entry["size"],
             )
-            for entry in entries if not entry.get("session_id",False)]
+                for entry in entries
+                if not entry.get("session_id", False)
+            ]
         )
 
         def filter_on_match_type(match_type: int) -> List[DataValidationFile]:
@@ -1706,20 +1757,26 @@ class DataValidationStatus:
     def __init__(
         self,
         file: DataValidationFile = None,
-        matches: List[DataValidationFile] = None, # get matches for all session files only once and feed them in
+        matches: List[
+            DataValidationFile
+        ] = None,  # get matches for all session files only once and feed them in
         path: str = None,
         checksum: str = None,
         size: int = None,
     ):
         if not file or not isinstance(file, DataValidationFile): 
-            if isinstance(file,str):
+            if isinstance(file, str):
                 path = file
             # generate a file from the default DataValidationFile class
             file = self.db.DVFile(path=path, checksum=checksum, size=size)
         self.file = file
 
         # TODO cycle through different DVFile classes here until we find matches 
-        if not matches or not isinstance(matches, list) or not isinstance(matches[0], DataValidationFile):
+        if (
+            not matches
+            or not isinstance(matches, list)
+            or not isinstance(matches[0], DataValidationFile)
+        ):
             matches = self.db.get_matches(file=file)
         self.matches = matches
     
@@ -1750,7 +1807,6 @@ class DataValidationStatus:
     # def eval_backups(self) -> self.Backup:
     #     """Return an enum indicating the status of the file's backups (according to
     #     what's currently accessible on disk or //allen/ - not from entries in the database)"""
-        
         
     class Backup(enum.IntFlag):
         """Evaluate where a file is in the backup process.
@@ -1825,7 +1881,7 @@ class DataValidationStatus:
         # copies exist, more computation is needed to validate
 
         COPY_ON_LIMS_MISSING_SELF = 303  # checksum self.file
-        COPY_ON_LIMS_MISSING_OTHER = 302  # checksum the file on lims (or get from upload queue)
+        COPY_ON_LIMS_MISSING_OTHER = 302  # checksum the file on lims
         COPY_ON_LIMS_MISSING_BOTH = 301 
 
         COPY_ON_NPEXP_MISSING_SELF = COPY_ON_SD_MISSING_SELF = 203
@@ -1874,7 +1930,7 @@ class DataValidationFolder:
     ] = None  # auto-populated with lims, npexp, sync computer folders
     include_subfolders: bool = True
 
-    regenerate_threshold_bytes: int = 1 * 1024 ** 2  # MB
+    regenerate_threshold_bytes: int = 1 * 1024**2  # MB
     # - below this file size, checksums will always be generated - even if they're already in the database
     # - above this size, behavior is to get the checksum from the database if it exists for the file (size + path must
     #   be identical), otherwise generate it
@@ -2269,7 +2325,7 @@ def clear_dirs():
         return
 
     regenerate_threshold_bytes = config["options"].getint(
-        "regenerate_threshold_bytes", fallback=1024 ** 2
+        "regenerate_threshold_bytes", fallback=1024**2
     )
     min_age_days = config["options"].getint("min_age_days", fallback=0)
     filename_filter = config["options"].get("filename_filter", fallback="")
@@ -2314,6 +2370,7 @@ def clear_dirs():
     print(
         f"{divider}Finished clearing.\n{len(total_deleted_bytes)} files deleted | {sum(total_deleted_bytes) / 1024**3 :.1f} GB recovered\n"
     )
+
 
 # including names from allensdk/brain_observatory/ecephys/copy_utility/_schemas.py:
 available_DVFiles = {

@@ -123,7 +123,7 @@ import tempfile
 import threading
 import traceback
 import zlib
-from typing import Any, Callable, Generator, List, Set, Type, Union
+from typing import Any, Callable, Generator, List, Set, Union
 
 try:
     import pymongo
@@ -1361,7 +1361,7 @@ class MongoDataValidationDB(DataValidationDB):
         path: str = None,
         size: int = None,
         checksum: str = None,
-        match: Union[int, Type[enum.IntEnum]] = None,
+        match: Union[int, enum.IntEnum] = None,
     ) -> List[DataValidationFile]:  # , Optional[List[int]]:
         """Search database for entries that match any of the given arguments.
         
@@ -1701,7 +1701,7 @@ class DataValidationStatus:
 
     """
 
-    db: Type[DataValidationDB] = MongoDataValidationDB
+    db: DataValidationDB = MongoDataValidationDB
 
     def __init__(
         self,
@@ -1868,7 +1868,7 @@ class DataValidationFolder:
     possibly deleting if a valid copy exists elswhere (evalutated using DVStatus)
     """
 
-    db: Type[DataValidationDB] = MongoDataValidationDB
+    db: DataValidationDB = MongoDataValidationDB
     backup_paths: Set[
         str
     ] = None  # auto-populated with lims, npexp, sync computer folders

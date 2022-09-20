@@ -141,7 +141,7 @@ def exchange_if_checksum_in_db(
     if subject.checksum:
         return subject
 
-    accepted_matches = subject.Match.SELF_MISSING_SELF
+    accepted_matches = [subject.Match.SELF,subject.Match.SELF_MISSING_SELF]
     matches = db.get_matches(subject, match=accepted_matches)
 
     if not matches:

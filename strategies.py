@@ -156,6 +156,10 @@ def exchange_if_checksum_in_db(
         return matches[0]
     if len(matches) > 1 and not types_equal:
         for m in matches:
+            submatches = db.get_matches(m,match=[subject.Match.VALID_COPY,subject.Match.VALID_COPY_RENAMED])
+            # if any of the matches have a valid copy in the db
+            if submatches:
+                return m
             if m.__class__ == subject.__class__:
                 return m # subject class may have been chosen for a particular reason
             # next follow the order specified

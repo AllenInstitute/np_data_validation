@@ -138,5 +138,5 @@ def clear_dirs():
     
 
 if __name__ == "__main__":
-    # clear_dirs()
-    clear_orphan_files()
+    clear_dirs()
+    # clear_orphan_files()

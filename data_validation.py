@@ -117,6 +117,7 @@ import pprint
 import random
 import re
 import shelve
+import shutil
 import socket
 import sys
 import tempfile
@@ -148,9 +149,38 @@ logHandler.formatter = logging.Formatter(
 log.addHandler(logHandler)
 log.setLevel(logging.INFO)  # may be overwritten elsewhere
 
-MONGO_COLLECTION: pymongo.collection.Collection = pymongo.MongoClient(
-    "mongodb://10.128.50.77:27017/"
-).prod.snapshots
+# get mongodb ready -------------------------------------------------------------------- #
+mongo_local_client:pymongo.MongoClient = pymongo.MongoClient(
+    "mongodb://10.128.50.77:27017/",
+    serverSelectionTimeoutMS = 2000, #default 30s
+    maxPoolSize = 0, # default 100
+)
+
+# backup cloud location
+mongo_cloud_uri = "mongodb+srv://cluster0.rhrmjzu.mongodb.net/?authSource=%24external&authMechanism=MONGODB-X509&retryWrites=true&w=majority"
+mongo_cloud_certificate = mgc = pathlib.Path("X509-cert-4825098053518902813.pem") # expires Sept 2024
+mgc_bkup = lambda host="localhost": pathlib.Path(f"//{host}/C$/ProgramData/MongoDB") / mgc
+ben_desktop = "W10DTMJ0AK6GM"
+if not mgc.exists() and not mgc_bkup().exists():
+    shutil.copy2(mgc_bkup(ben_desktop),mgc.parent)
+mongo_cloud_client = pymongo.MongoClient(
+    host= mongo_cloud_uri,
+    tls=True,
+    tlsCertificateKeyFile=mgc.as_posix() if mgc.exists() else mgc_bkup().as_posix(),
+    maxPoolSize = 0, # default 100
+)
+
+for client in [mongo_local_client, mongo_cloud_client]:
+    MONGO_COLLECTION = client["prod"]["snapshots"]
+    try:
+        MONGO_COLLECTION.count_documents({})
+        break
+    except Exception as e:
+        print(f"Could not connect to {client}")
+else:
+    raise Exception("Could not connect to any mongo clients")
+print(f"Connected to {client.address[0]}")
+
 # defining the collection here opens the db connection just once per session (instead of
 # repeated open/close for every access) as recommended by MongoDB docs
 

@@ -1,64 +1,61 @@
-import os
 import pathlib
+import pprint
 import sys
-import threading
+from typing import Union
 
 import clear_dirs
 import data_validation as dv
-import strategies
 
 
-def dirs_from_clear_dirs():
-    config, dirs = clear_dirs.config_dirs_from_file()
-        # current config for clear_dirs has some universal settings, plus additional dirs that can be cleared for each rig computer type (acq, sync, mon..)
-    dirs = [
-        pathlib.Path(d.strip()).resolve()
-        for d in config["options"]["dirs"].split(",")
-        if d != ""
-    ]
-
-    if os.getenv("AIBS_COMP_ID"):
-        # add folders for routine clearing on rig computers
-        comp = os.getenv("AIBS_COMP_ID").split("-")[-1].lower()
-        if comp in config:
-            dirs += [
-                pathlib.Path(d.strip()).resolve()
-                for d in config[comp]["dirs"].split(",")
-                if d != ""
-            ]
-    return config, dirs
-
-def main(dirs:list[str]=None):
-    config, usual_dirs = dirs_from_clear_dirs()
+def main(dirs:Union[list[str],list[pathlib.Path]]=None):
 
     if not dirs:
-        dirs = usual_dirs
-        
-    for path in [p for dir in dirs for p in dir.rglob('*')]:
-        if path.is_dir():
+        config, dirs = clear_dirs.config_dirs_from_file()
+    else:
+        dirs = [pathlib.Path(d).resolve() for d in dirs if d != ""]
+
+    if not dirs:
+        return
+
+    print("Checking:")
+    pprint.pprint(dirs, indent=4, compact=False)
+
+    divider = "\n" + "=" * 40 + "\n\n"
+
+    for F in dv.DVFolders_from_dirs(dirs=dirs, only_session_folders=config["options"].getboolean("only_session_folders", fallback=False)):
+
+        if not F:
             continue
-        
-        try:
-            file = dv.SHA3_256DataValidationFile(path)
-        except dv.SessionError:
-            file = dv.OrphanedDVFile(path)
 
-        threads = []
-        t = threading.Thread(
-            target=strategies.generate_checksum_if_not_in_db,
-            args=(file, dv.MongoDataValidationDB(),),
-        )
+        if not F.file_paths:
+            continue
 
-        threads.append(t)
-        t.start()
+        print(f"{divider}{F.path}")
 
-        # wait for the threads to complete
-        print("- adding files to database...")
-        for thread in dv.progressbar(threads, prefix=" ", units="files", size=25):
-            thread.join()
-        
+        F.add_to_db()
+
+    # for path in [p for dir in dirs for p in dir.rglob('*')]:
+    #     if path.is_dir():
+    #         continue
+
+    #     try:
+    #         file = dv.SHA3_256DataValidationFile(path)
+    #     except dv.SessionError:
+    #         file = dv.OrphanedDVFile(path)
+
+    #     threads = []
+    #     t = threading.Thread(
+    #         target=strategies.generate_checksum_if_not_in_db,
+    #         args=(file, dv.MongoDataValidationDB(),),
+    #     )
+
+    #     threads.append(t)
+    #     t.start()
+
+    #     # wait for the threads to complete
+    #     print("- adding files to database...")
+    #     for thread in dv.progressbar(threads, prefix=" ", units="files", size=25):
+    #         thread.join()
+
 if __name__ == "__main__":
-    
-    dirs = sys.argv[1:]
-
-    main(dirs)
+    main(sys.argv[1:])

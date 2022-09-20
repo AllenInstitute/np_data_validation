@@ -3,6 +3,7 @@ import logging
 import os
 import pathlib
 import pprint
+import sys
 import threading
 
 import data_validation as dv
@@ -135,8 +136,41 @@ def clear_dirs():
     )
     if only_session_folders:
         return
-    
+
+def clear_dirs_fast():
+    config, dirs = config_dirs_from_file()
+    deleted = 0
+
+    db = dv.MongoDataValidationDB()
+    for path in sorted([paths for dir in dirs for paths in dir.rglob("*")],reverse=True):
+
+        if path.is_dir():
+            continue
+
+        if path.stat().st_size <  10*1024 ** 2:
+            continue # we don't care about clearing small files right now
+
+        file = strategies.exchange_if_checksum_in_db(dv.OrphanedDVFile(path=path),db)
+        if not file.checksum:
+            continue
+
+        accepted_matches = [file.Match.VALID_COPY,
+                            file.Match.VALID_COPY_RENAMED]
+        matches = db.get_matches(file=file,match=accepted_matches)
+        if not matches:
+            continue
+        for m in matches:
+            if (
+                (file == m) > 20
+                and any(sub in str(m.path) for sub in ['np-exp','prod0','ecephys_session_'])
+            ):  # valid copy
+                deleted += file.path.stat().st_size
+                sys.stdout.write(f"Deleting {file.path.name} - valid copy in {m.path.parent}\n cumulative cleared {deleted / 1024 ** 3 :.1f} GB\r")
+                sys.stdout.flush()
+                file.path.unlink()
+                break
+
 
 if __name__ == "__main__":
-    clear_dirs()
+    clear_dirs_fast()
     # clear_orphan_files()

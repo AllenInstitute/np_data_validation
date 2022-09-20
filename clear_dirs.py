@@ -94,7 +94,7 @@ def clear_dirs():
     min_age_days = config["options"].getint("min_age_days", fallback=0)
     filename_filter = config["options"].get("filename_filter", fallback="")
     only_session_folders = config["options"].getboolean(
-        "only_session_folders", fallback=True
+        "only_session_folders", fallback=False
     )
     exhaustive_search = config["options"].getboolean(
         "exhaustive_search", fallback=False
@@ -111,7 +111,7 @@ def clear_dirs():
 
     divider = "\n" + "=" * 40 + "\n\n"
 
-    for F in dv.DVFolders_from_dirs(dirs, True):
+    for F in dv.DVFolders_from_dirs(dirs, only_session_folders):
         if not F:
             continue
         F.regenerate_threshold_bytes = regenerate_threshold_bytes
@@ -138,7 +138,12 @@ def clear_dirs():
         return
 
 def clear_dirs_fast():
+
     config, dirs = config_dirs_from_file()
+
+    if not dirs:
+        return
+
     deleted = 0
 
     db = dv.MongoDataValidationDB()
@@ -172,5 +177,5 @@ def clear_dirs_fast():
 
 
 if __name__ == "__main__":
-    clear_dirs_fast()
+    clear_dirs()
     # clear_orphan_files()

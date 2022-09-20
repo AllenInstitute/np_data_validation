@@ -108,8 +108,11 @@ def find_invalid_copies_in_db(
     return [
         m
         for i, m in enumerate(matches)
-        if match_type[i] >= subject.Match.CHECKSUM_COLLISION
-        and match_type[i] <= subject.Match.COPY_UNSYNCED_OR_CORRUPT_DATA
+        if match_type[i] in [
+            subject.Match.COPY_UNSYNCED_CHECKSUM,
+            subject.Match.COPY_UNSYNCED_OR_CORRUPT_DATA,
+            subject.Match.COPY_UNSYNCED_DATA
+        ]
     ] or None
 
 

@@ -2062,10 +2062,12 @@ class DataValidationFolder:
         threads = []
         for path in self.file_paths:
             try:
-                file = self.db.DVFile(path=path.as_posix())
+                file = self.db.DVFile(path=path)
+            except SessionError:
+                file = OrphanedDVFile(path=path)
             except (ValueError, TypeError):
                 logging.debug(
-                    f"{self.__class__.__name__}: could not add to database, likely missing session ID: {path.as_posix()}"
+                    f"{self.__class__.__name__}: could not create SessionDVFile: {path.as_posix()}"
                 )
                 continue
 

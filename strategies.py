@@ -58,7 +58,6 @@ from typing import List, Set, Union
 # if TYPE_CHECKING:
 import data_validation as dv
 
-
 def generate_checksum(
     subject: dv.DataValidationFile, db: dv.DataValidationDB
 ) -> dv.DataValidationFile:
@@ -162,7 +161,7 @@ def exchange_if_checksum_in_db(
                     return m
                 
     dv.logging.info(f"Multiple matches for {subject} in db - could not determine SELF for exchange")
-        return subject
+    return subject
 
 
 def delete_if_valid_backup_in_db(

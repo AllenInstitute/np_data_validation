@@ -952,7 +952,7 @@ class DataValidationFile(abc.ABC):
         else:
             samefile = None
 
-        if (
+        if samefile or (
             self.checksum
             and other.checksum
             and (self.checksum == other.checksum)
@@ -961,7 +961,8 @@ class DataValidationFile(abc.ABC):
                 self.path.as_posix().lower() == other.path.as_posix().lower()
                 or samefile is True
             )
-        ) and samefile is not False:  # self
+            and samefile is not False
+        ):  # self
             return self.__class__.Match.SELF.value
 
         #! watch out: SELF_MISSING_SELF and SELF_MISSING_OTHER

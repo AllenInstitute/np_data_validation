@@ -947,10 +947,12 @@ class DataValidationFile(abc.ABC):
 
         # -make use of addtl file check: depends on files existing so isn't always
         # reliable
-        if self.path.exists() and other.path.exists():
-            samefile = self.path.samefile(other.path)
-        else:
-            samefile = None
+        samefile = None
+        try:
+            if self.path.exists() and other.path.exists():
+                samefile = self.path.samefile(other.path)
+        except OSError:
+            pass
 
         if samefile or (
             self.checksum

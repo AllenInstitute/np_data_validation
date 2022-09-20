@@ -1437,16 +1437,18 @@ class MongoDataValidationDB(DataValidationDB):
             # perform a quick filter on the list before converting to DVFiles,
             # skip path, which may be normalized by DVFile constructor
             if match and all(
-                m in [file.Match.SELF, file.Match.SELF_MISSING_SELF] for m in match
-            ):
+                m
+                in [
+                    file.Match.SELF,
+                    file.Match.SELF_MISSING_SELF,
+                    file.Match.SELF_MISSING_OTHER,
+                ]
+                for m in match
+            ):  # we'll never want to search for self_missing_other in db, but included here just in case it's in match
                 entries = [
                     e
                     for e in entries
-                    if (
-                        e["path"] == file.path.as_posix()
-                        or e["size"] == file.size
-                        or e["checksum"] == file.checksum
-                    )
+                    if (e["size"] == file.size or e["checksum"] == file.checksum)  # *
                 ]
             elif match and all(
                 m in [file.Match.VALID_COPY, file.Match.VALID_COPY_RENAMED]
@@ -1457,6 +1459,12 @@ class MongoDataValidationDB(DataValidationDB):
                     for e in entries
                     if (e["size"] == file.size and e["checksum"] == file.checksum)
                 ]
+            """
+            #*Disabled path == path match as it's too strict: the same file can be
+            specified by different paths (UNC vs local, $ etc) - we could use
+            pathlib.Path.samefile() for all entries, but we may as well just generate
+            the DVFiles
+            """
 
         elif isinstance(file, OrphanedDVFile):
             # for non-SessionFile DVFile objects, we want to find all matches possible

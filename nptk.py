@@ -24,7 +24,7 @@ lims_requests = {
 # - ------------------------------------------------------------------------------------
 #   #
 # get AIBS IDs, if set
-COMP_ID: str = os.environ.get("AIBS_COMP_ID", os.environ["COMPUTERNAME"]).upper()
+COMP_ID: str = os.environ.get("AIBS_COMP_ID", socket.gethostname()).upper()
 RIG_ID: str = os.environ.get("AIBS_RIG_ID",None)
 
 while not RIG_ID:

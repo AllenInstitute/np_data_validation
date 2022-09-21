@@ -99,9 +99,9 @@ def clear_dirs():
     exhaustive_search = config["options"].getboolean(
         "exhaustive_search", fallback=False
     )
-    logging.getLogger().setLevel(
-        config["options"].getint("regenerate_threshold_bytes", fallback=20)
-    )
+    # logging.getLogger().setLevel(
+    #     config["options"].getint("logging_level", fallback=20)
+    # )
 
     total_deleted_bytes = []  # keep a tally of space recovered
     print("Checking:")

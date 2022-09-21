@@ -161,12 +161,12 @@ mongo_cloud_uri = "mongodb+srv://cluster0.rhrmjzu.mongodb.net/?authSource=%24ext
 mongo_cloud_certificate = mgc = pathlib.Path("X509-cert-4825098053518902813.pem") # expires Sept 2024
 mgc_bkup = lambda host="localhost": pathlib.Path(f"//{host}/C$/ProgramData/MongoDB") / mgc
 ben_desktop = "W10DTMJ0AK6GM"
-if not mgc.exists() and not mgc_bkup().exists():
+if not mgc.resolve().exists() and not mgc_bkup().exists():
     shutil.copy2(mgc_bkup(ben_desktop),mgc.parent)
 mongo_cloud_client = pymongo.MongoClient(
     host= mongo_cloud_uri,
     tls=True,
-    tlsCertificateKeyFile=mgc.as_posix() if mgc.exists() else mgc_bkup().as_posix(),
+    tlsCertificateKeyFile=mgc.resolve().as_posix() if mgc.resolve().exists() else mgc_bkup().as_posix(),
     maxPoolSize = 0, # default 100
 )
 

@@ -1,6 +1,7 @@
 import os
 import platform
 import re
+import socket
 from enum import Enum
 from typing import List, Union
 

@@ -166,8 +166,8 @@ if not mgc.resolve().exists() and not mgc_bkup().exists():
 mongo_cloud_client = pymongo.MongoClient(
     host= mongo_cloud_uri,
     tls=True,
-    tlsCertificateKeyFile=mgc.resolve().as_posix() if mgc.resolve().exists() else mgc_bkup().as_posix(),
-    maxPoolSize = 0, # default 100
+    tlsCertificateKeyFile=mgc.as_posix() if mgc.exists() else mgc_bkup().as_posix(),
+    maxPoolSize = 100, # 500 max on free plan -default 100
 )
 
 for client in [mongo_local_client, mongo_cloud_client]:

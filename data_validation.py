@@ -1348,7 +1348,7 @@ class MongoDataValidationDB(DataValidationDB):
     def add_file(
         cls,
         file: DataValidationFile = None,
-        path: str = None,
+        path: Union[str,pathlib.Path] = None,
         size: int = None,
         checksum: str = None,
     ):
@@ -1427,7 +1427,7 @@ class MongoDataValidationDB(DataValidationDB):
     def get_matches(
         cls,
         file: DataValidationFile = None,
-        path: str = None,
+        path: Union[str,pathlib.Path] = None,
         size: int = None,
         checksum: str = None,
         match: Union[int, enum.IntEnum] = None,
@@ -1443,7 +1443,7 @@ class MongoDataValidationDB(DataValidationDB):
           transfer ladder to lims; files without a sessionID are on the bottom rung
         """
         if not file or not isinstance(file, DataValidationFile):
-            if isinstance(file, str):  # path provided as positional argument
+            if isinstance(file, (str,pathlib.Path)):  # path provided as positional argument
                 path = file
             try:
                 # make a new object with the default DVFile class
@@ -1798,15 +1798,12 @@ class DataValidationStatus:
     def __init__(
         self,
         file: DataValidationFile = None,
-        matches: List[
-            DataValidationFile
-        ] = None,  # get matches for all session files only once and feed them in
-        path: str = None,
+        path: Union[str,pathlib.Path] = None,
         checksum: str = None,
         size: int = None,
     ):
         if not file or not isinstance(file, DataValidationFile):
-            if isinstance(file, str):
+            if isinstance(file, (str,pathlib.Path)):  # path provided as positional argument
                 path = file
             # generate a file from the default DataValidationFile class
             file = self.db.DVFile(path=path, checksum=checksum, size=size)
@@ -2311,7 +2308,7 @@ def report_multline_print(
 
 
 def DVFolders_from_dirs(
-    dirs: Union[str, List[str]], only_session_folders=True
+    dirs: Union[str, List[str], List[pathlib.Path]], only_session_folders=True
 ) -> Generator[DataValidationFolder, None, None]:
     """Generator of DataValidationFolder objects from a list of directories"""
     if not isinstance(dirs, list):

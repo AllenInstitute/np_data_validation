@@ -1404,7 +1404,7 @@ class MongoDataValidationDB(DataValidationDB):
             filter=existing_entry,  # search for this
             replacement=new_entry,
             upsert=True,  # add new entry if not found
-            hint="session_id",
+            hint="unique",
         )
         if not result.acknowledged:
             logging.info(f"Failed to add to MongoDB {file}")

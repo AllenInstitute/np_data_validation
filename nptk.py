@@ -60,7 +60,7 @@ class Rig(Enum):
         while not RIG_ID:
             
             # extract RIG_ID from COMP_ID if possible
-            RIG_ID = cls.rig_str_to_int(COMP_ID)
+            RIG_ID = cls.rig_str_with_digit(COMP_ID)
             if RIG_ID:
                 break
             
@@ -132,9 +132,16 @@ class Rig(Enum):
         return None
         
     @staticmethod
-    def rig_str_to_int(rig:str) -> Union[str,None]:
+    def rig_str_to_int(rig:str) -> Union[int,None]:
         # extract RIG_ID from str if possible
-        str_match = re.search(R"NP.[\d]+", rig)
+        str_match = re.search(R"(?<=NP\.)(\d)", rig.upper())
+        if str_match:
+            return str_match[0]
+        return None
+    @staticmethod
+    def rig_str_with_digit(rig:str) -> Union[str,None]:
+        # extract RIG_ID from str if possible
+        str_match = re.search(R"NP.\d", rig.upper())
         if str_match:
             return str_match[0]
         return None

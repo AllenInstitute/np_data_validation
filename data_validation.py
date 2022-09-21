@@ -679,7 +679,7 @@ class SessionFile:
             sync_path = nptk.Rig.Sync.path
         elif rig_from_path:
             rig_idx = nptk.Rig.rig_str_to_int(rig_from_path)
-            sync_path = "//" + nptk.ConfigHTTP.get_np_computers(rig_idx, "sync")
+            sync_path = "//" + nptk.ConfigHTTP.get_np_computers(rig_idx, "sync")[nptk.Rig.sync.value]
         else:
             sync_path = None
         # the z drive/neuropix data folder for this rig

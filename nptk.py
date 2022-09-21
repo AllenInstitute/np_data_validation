@@ -6,6 +6,23 @@ from typing import List, Union
 
 import requests
 
+# useful lims endpoints ----------------------------------------------------------------
+lims_requests = {
+    "donor_info": "http://lims2/donors/info/details.json?external_donor_name={}",
+    "experiment_id": "http://lims2/specimens/info/details.%s?experiment_id={}",
+    "isi_experiment_prod": "http://lims2/specimens/isi_experiment_details/{}.json",
+    "isi_experiment_test": "http://testlimswebc7:4800/specimens/isi_experiment_details/{}.json",
+    "metadata": "http://lims2/specimen_metadata.json?specimen_id={}",
+    "projects_validation": "http://lims2/projects.json?code={}",
+    "save_visual_behavior_details": "http://lims2/visual_behavior_details",
+    "specimen_id": "http://lims2/specimens/info/details.json?id={}",
+    "specimen_name": "http://lims2/specimens/info/details.json?specimen_name={}",
+    "user_details": "http://lims2/users.json?login={}",
+    "visual_behavior_details": "http://lims2/visual_behavior_details?donor_id={}",
+    "well_name": "http://lims2/specimens/info/details.json?carousel_well_name={}",
+}
+# - ------------------------------------------------------------------------------------
+#   #
 # get AIBS IDs, if set
 COMP_ID: str = os.environ.get("AIBS_COMP_ID", os.environ["COMPUTERNAME"]).upper()
 RIG_ID: str = os.environ.get("AIBS_RIG_ID",None)

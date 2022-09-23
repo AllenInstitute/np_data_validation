@@ -1875,6 +1875,191 @@ class CRC32JsonDataValidationDB(DataValidationDB):
                     or (f.session_folder == session_folder and f.size == size)
                 ]
 
+class LimsDVDatabase(DataValidationDB):
+    """Database interface for retrieving checksums generated when files enter lims"""
+    
+    DVFile = CRC32DataValidationFile
+    
+    @classmethod
+    def add_file(cls,*args,**kwargs): 
+        """Not implemented: information is read-only"""
+        pass
+    
+    @classmethod
+    def get_matches(
+        cls,
+        file: DataValidationFile = None,
+        path: str = None,
+        size: int = None,
+        checksum: str = None,
+    ) -> List[DataValidationFile]:
+        if isinstance(file, DataValidationFile):
+            path = file.path
+        return [cls.get_file_with_hash_from_lims(path)]
+    
+    @staticmethod
+    def hash_type_from_ecephys_upload_input_json(json_path: Union[str, pathlib.Path]) -> str:
+        """Read LIMS ECEPHYS_UPLOAD_QUEUE _input.json and return the hashlib class."""
+        with open(json_path) as f:
+            hasher_key = json.load(f).get("hasher_key", None)
+        return hasher_key
+    
+    @staticmethod
+    def lims_list_to_hexdigest(lims_hash: List[int]) -> str:
+        lims_list_bytes = b""
+        for i in lims_hash:
+            lims_list_bytes += (i).to_bytes(1, byteorder="little")
+        return lims_list_bytes.hex()
+
+    @staticmethod
+    def hashes_from_ecephys_upload_output_json(
+        json_path: Union[str, pathlib.Path], hasher_key: str
+    ) -> dict[str, str]:
+        """Read LIMS ECEPHYS_UPLOAD_QUEUE _output.json and return a dict of {lims filepaths:hashes(hex)}."""
+        # hash_cls is specified in output_json, not input json, so we'll need to open that
+        # up and feed its value of hash_cls to this function
+        # not calling 'hash_class_from_ecephys_upload_input_json' here because this
+        # organization of files may change in future, and we need to pass the hash_cls to
+        # other functions
+
+        if not json_path and not hasher_key:
+            raise ValueError("path and hashlib class must be provided")
+
+        json_path = pathlib.Path(json_path)
+        if not hasher_key in lims_available_hashers.keys():
+            raise ValueError(f"hash_cls must be one of {list(lims_available_hashers.keys())}")
+
+        if not json_path.exists():
+            raise FileNotFoundError("path does not exist")
+
+        if not json_path.suffix == ".json":
+            raise ValueError("path must be a json file")
+
+        with open(json_path) as f:
+            data = json.load(f)
+
+        file_hash = {}
+        for file in data["files"]:
+            file_hash.update(
+                {file["destination"]: __class__.lims_list_to_hexdigest(file["destination_hash"])}
+            )
+        return file_hash
+
+    @staticmethod
+    def upload_jsons_from_ecephys_session_or_file(session_or_file: Union[int, str, pathlib.Path, DataValidationFile]) -> List[Tuple]:
+        """Returns a list of tuples of (input_json, output_json) for any given session file
+        or session id."""
+        if isinstance(session_or_file,(str,pathlib.Path)):
+            try:
+                lims_dir = Session(session_or_file).lims_path
+            except:
+                return None
+        else:
+            if isinstance(session_or_file,(DataValidationFile)):
+                lims_dir = session_or_file.session.lims_path  
+            elif isinstance(session_or_file,int):
+                lims_dir = Session(path=f"{session_or_file}_366122_20220618").lims_path
+            
+        if not lims_dir:
+            return None
+        
+        input_and_output_jsons = []
+        for upload_input_json in itertools.chain(
+            lims_dir.rglob("*_UPLOAD_QUEUE_*_input.json"),
+            lims_dir.rglob("*EUR_QUEUE_*_input.json"),
+            ):
+            # get corresponding output json
+            matching_output_jsons = upload_input_json.parent.rglob(
+                "*" + upload_input_json.name.replace("input", "output")
+            )
+            upload_output_json = [f for f in matching_output_jsons]
+            if not upload_output_json:
+                log.info(f"No matching output json found for {upload_input_json}")
+                continue
+
+            if len(upload_output_json) > 1:
+                log.info(
+                    f"Multiple output json files found for {upload_input_json}: {upload_output_json}"
+                )
+                continue
+            
+            upload_output_json = upload_output_json[0]
+
+            input_and_output_jsons.append((upload_input_json, upload_output_json))
+        
+        return input_and_output_jsons
+            
+    @staticmethod
+    def file_factory_from_ecephys_session(session_or_file: Union[int, str, pathlib.Path, DataValidationFile], return_as_dict=False) -> Union[Dict[str,Dict[str,str]],List[DataValidationFile],]:
+        """Return a list of DVFiles with checksums for an ecephys session on lims.
+        
+        Provide path to ecephys_session_ dir or any file within it and we'll extract out
+        the session dir.
+        
+        #! Current understanding is that files can't be overwritten on lims
+        so although a file may have been uploaded multiple times (appearing in multiple
+        upload queue files with multiple hashes), the path in lims will always be unique (ie
+        the same file can live in multiple subfolders) - so we should be able to aggregate
+        all filepaths across all upload queue files and get a unique set of files (with some
+        possible overlap in data/checksums).
+        
+        """
+
+        input_and_output_jsons = __class__.upload_jsons_from_ecephys_session_or_file(session_or_file)
+        if not input_and_output_jsons:
+            return
+        
+        all_hashes = {}
+        for upload_input_json, upload_output_json in input_and_output_jsons:
+            # get hash function that was used by lims
+            hasher_key = __class__.hash_type_from_ecephys_upload_input_json(upload_input_json)
+            # get hashes from output json
+            hashes = __class__.hashes_from_ecephys_upload_output_json(upload_output_json, hasher_key)
+            
+            for file in hashes.keys():
+                if all_hashes.get(file,None):
+                    print(f"{file} already in all_hashes")
+                all_hashes.update({file:{hasher_key:hashes[file]}})
+            
+        if return_as_dict:
+            return all_hashes
+
+        # this is slow-ish and only makes sense if we need DVFiles for all objects in a
+        # session - otherwise just use the dict
+        DVFiles = [] 
+        for file,hashes in all_hashes.items():
+            for hasher_key,hash_hexdigest in hashes.items():
+                DVFiles.append(available_DVFiles[hasher_key](path=file,checksum=hash_hexdigest))
+        return DVFiles
+
+    @staticmethod
+    def get_file_with_hash_from_lims(file: Union[str,pathlib.Path,SessionFile]) -> DataValidationFile:
+        """Return the hash of a file in LIMS, or None if it doesn't exist."""
+        if not isinstance(file,SessionFile):
+            try:
+                file = SessionFile(path=file)
+            except SessionError:
+                return None
+            
+        if not file.lims_backup:
+            return None
+        
+        lims_file = file.lims_backup
+        all_hashes = __class__.file_factory_from_ecephys_session(lims_file,return_as_dict=True)
+        if not all_hashes:
+            return None
+        DVFiles = []
+        for lims_file,hashes in all_hashes.items():
+            if lims_file == file.lims_backup.as_posix() or lims_file == file.lims_backup.as_posix()[1:]:
+                for hasher_key,hash_hexdigest in hashes.items():
+                    DVFiles.append(available_DVFiles[hasher_key](path=lims_file,checksum=hash_hexdigest))    
+        if len(DVFiles) == 1:
+            return DVFiles[0]
+        elif len(DVFiles) > 1:
+            # multiple checksums found - return first (which should be sha3_256 and is more common)
+            return DVFiles[0]
+        return None
+        
 
 class DataValidationStatus:
     """Provides a shorthand (enum) that represents the position of a file along the road to LIMS and the existence of

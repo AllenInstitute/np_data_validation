@@ -928,11 +928,13 @@ class DataValidationFile(abc.ABC):
 
         UNRELATED = 0
         UNKNOWN = -1
-        CHECKSUM_COLLISION = -2  # rare case of different files with the same checksum
-
+        UNKNOWN_CHECKSUM_TYPE_MISMATCH = -2 # size, name and checksum type are different
+        CHECKSUM_COLLISION = -3  # rare case of different files with the same checksum
+        SELF_PREVIOUS_VERSION = -5  # path is identical, size or checksum mismatch
+        
         # =======================================================================================
         # files at the same location on disk
-
+        
         SELF = 5
 
         #!
@@ -940,8 +942,8 @@ class DataValidationFile(abc.ABC):
         SELF_MISSING_OTHER = 7  # other file is missing a checksum  #? further info
         #! watch out: the two above depend on the order of objects in the inequality
 
-        SELF_PREVIOUS_VERSION = 8  # path is identical, size or checksum mismatch
-
+        SELF_CHECKSUM_TYPE_MISMATCH = 8 # size and path identical, checksum types are different
+        
         # =======================================================================================
         # the most tentative of matches - going off only the size (+ probe letters if applicable)
 
@@ -963,13 +965,14 @@ class DataValidationFile(abc.ABC):
         COPY_MISSING_BOTH = 17  # ? further info
         COPY_MISSING_SELF = 18  # ? further info
         COPY_MISSING_OTHER = 19  # ? further info
-
+        COPY_CHECKSUM_TYPE_MISMATCH = 20  # ? convert one to the other
+        
         # ---------------------------------------------------------------------------------------
         # matching data - this is generally what we want to search for to validate backups
 
         VALID_COPY = 21
         VALID_COPY_RENAMED = 22
-
+        
     def __eq__(self, other):
         """Test equality of two DataValidationFile objects"""
         # size and path fields are required entries in a DVF entry in database -

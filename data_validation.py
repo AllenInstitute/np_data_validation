@@ -890,7 +890,7 @@ class DataValidationFile(abc.ABC):
             for others in other:
                 self.report(others)
         else:
-            result = self.Match(self == other).name
+            result = self.Match(self.compare(other)).name
             logging.info(
                 f"{result} | {self.path.as_posix()} {other.path} | {self.checksum} {other.checksum} | {self.size} {other.size} bytes"
             )
@@ -910,11 +910,12 @@ class DataValidationFile(abc.ABC):
     @enum.unique
     class Match(enum.IntFlag):
         """Integer enum as a shorthand for DataValidationFile comparison.
-        - test for (file==other)
+        - test for file.compare(other)
             5-10 for self
             >10 for matches of interest
             >15 for possible backups (1 or both checksums reqd.)
             >20 for valid backups
+        - db.get_matches(file) should return entries in db for which file.compare(db_entry) > 0
 
         Note: some of the more detailed interpretations require checksum_name to be equal, so
         conditions need updating (Sept'22), but the most used comparisons are still correct:
@@ -974,7 +975,7 @@ class DataValidationFile(abc.ABC):
         VALID_COPY_RENAMED = 22
         
         
-    """`(self==other)` will be in the returned list if `self` and `other` are
+    """`(self.compare(other))` will be in the returned list if `self` and `other` are
     suspected to be the same file"""
     SELVES:List[Match] = [
             Match.SELF,
@@ -983,14 +984,14 @@ class DataValidationFile(abc.ABC):
             Match.SELF_CHECKSUM_TYPE_MISMATCH,
             ]
     
-    """`(self==other)` will be in the returned list if `other` is a
+    """`(self.compare(other)` will be in the returned list if `other` is a
     checksum-validated copy of `self`"""
     VALID_COPIES:List[Match] = [
         Match.VALID_COPY, 
         Match.VALID_COPY_RENAMED,
         ]
     
-    """`(self==other)` will be in the returned list if file names and sizes
+    """`(self.compare(other))` will be in the returned list if file names and sizes
         suggest `other` is a copy of `self`, and checksums do not contraindicate, but
         additional checksums need to be generated to confirm"""
     UNCONFIRMED_COPIES:List[Match] = [
@@ -1001,14 +1002,14 @@ class DataValidationFile(abc.ABC):
         Match.POSSIBLE_COPY_RENAMED,
     ]
         
-    """`(self==other)` will be in the returned list if the `other` has a checksum or
+    """`(self.compare(other))` will be in the returned list if the `other` has a checksum or
     size that indicates an invalid copy or out-of-date information"""     
     INVALID_COPIES:List[Match] = [
             Match.COPY_UNSYNCED_CHECKSUM,
             Match.COPY_UNSYNCED_OR_CORRUPT_DATA,
             Match.COPY_UNSYNCED_DATA,
         ]
-    """`(self==other)` will be in the returned list if the `other` has properties
+    """`(self.compare(other))` will be in the returned list if the `other` has properties
     that suggest it should be ignored for the purposes of validating data"""    
     IGNORED:List[Match] = [
             Match.UNRELATED,
@@ -1017,8 +1018,16 @@ class DataValidationFile(abc.ABC):
             Match.CHECKSUM_COLLISION,
             Match.SELF_PREVIOUS_VERSION,
         ]
-        
+    
+    def __hash__(self):
+        # this might be a bad idea: added to allow for set() operations on DVFiles to remove duplicates when getting
+        # a database - but DVFiles are mutable
+        return hash(self.checksum) ^ hash(self.size) ^ hash(self.path.as_posix())    
+     
     def __eq__(self, other):
+        return self.checksum == other.checksum and self.size == other.size and self.path == other.path
+    
+    def compare(self, other: DataValidationFile) -> Match:
         """Test equality of two DataValidationFile objects"""
         # size and path fields are required entries in a DVF entry in database -
         # checksum is optional, so we need to check for it in both objects
@@ -1372,11 +1381,11 @@ class ShelveDataValidationDB(DataValidationDB):
 
         with shelve.open(cls.db, writeback=True) as db:
             if key in db and (
-                [x for x in db[key] if (file == x) == cls.DVFile.Match.SELF]
+                [x for x in db[key] if file.compare(x) == cls.DVFile.Match.SELF]
                 or [
                     x
                     for x in db[key]
-                    if (file == x) == cls.DVFile.Match.SELF_MISSING_SELF
+                    if file.compare(x) == cls.DVFile.Match.SELF_MISSING_SELF
                 ]
             ):
                 print(f"skipped {file.session.folder}/{file.name} in Shelve database")
@@ -1421,13 +1430,13 @@ class ShelveDataValidationDB(DataValidationDB):
             )
         ):
             return (
-                [o for o in matches if (file == o) == match > 0],
-                [(file == o) for o in matches if (file == o) == match > 0],
+                [o for o in matches if file.compare(o) == match > 0],
+                [file.compare(o) for o in matches if file.compare(o) == match > 0],
             )
         else:
             return (
-                [o for o in matches if (file == o) > 0],
-                [(file == o) for o in matches if (file == o) > 0],
+                [o for o in matches if file.compare(o) > 0],
+                [file.compare(o) for o in matches if file.compare(o) > 0],
             )
 
     # def __del__(self):
@@ -1655,11 +1664,11 @@ class MongoDataValidationDB(DataValidationDB):
                 match_type in [x.value for x in file.Match]
                 or match_type in [x for x in file.Match]
             ):
-                return [o for o in matches if (file == o) == match_type > 0]
+                return [o for o in matches if file.compare(o) == match_type]
             return []
 
         if not match:
-            return [o for o in matches if (file == o) > 0]
+            return [o for o in matches if file.compare(o) not in DataValidationFile.IGNORED]
 
         filtered_matches = []
         for m in match:
@@ -2104,8 +2113,8 @@ class DataValidationStatus:
     @property
     def match_types(self) -> List[int]:
         """return a list of match types for the file"""
-        return [(self.file == match) for match in self.matches].sort(reverse=True)
-
+        return [self.file.compare(match) for match in self.matches]
+        return any(self.compare(backup) in DataValidationFile.VALID_COPIES for self,backup in zip(self.selves,self.backups))
     @property
     def eval_accessible_db_matches(self) -> DataValidationFile.Match:
         """Return an enum indicating the highest status of a file's matches in the database,
@@ -2487,7 +2496,7 @@ def test_data_validation_file():
     class Test(DataValidationFile):
         def valid(path):
             return True
-
+        def compare(self, other):
         checksum_generator = "12345678"
         checksum_test = None
         checksum_validate = valid
@@ -2500,26 +2509,26 @@ def test_data_validation_file():
     self = cls(path=path, checksum=checksum, size=size)
 
     other = cls(path=path, checksum=checksum, size=size)
-    assert (self == self) == self.Match.SELF, "not recognized: self"
+    assert self.compare(self) == self.Match.SELF, "not recognized: self"
 
     other = cls(path="//tmp2/tmp/test.txt", checksum=checksum, size=size)
     assert (
-        self == other
+        self.compare(other)
     ) == self.Match.VALID_COPY, "not recgonized: valid copy, not self"
 
     other = cls(path="//tmp2/tmp/test2.txt", checksum=checksum, size=size)
     assert (
-        self == other
+        self.compare(other)
     ) == self.Match.VALID_COPY_RENAMED, "not recognized: valid copy, different name"
 
     other = cls(path="//tmp2/tmp/test.txt", checksum="87654321", size=20)
     assert (
-        self == other
+        self.compare(other)
     ) == self.Match.COPY_UNSYNCED_DATA, "not recognized: out-of-sync copy"
 
     other = cls(path="//tmp2/tmp/test.txt", checksum=checksum, size=20)
     assert (
-        self == other
+        self.compare(other)
     ) == self.Match.COPY_UNSYNCED_CHECKSUM, (
         "not recognized: out-of-sync copy with incorrect checksum"
     )
@@ -2527,16 +2536,16 @@ def test_data_validation_file():
 
     other = cls(path="//tmp2/tmp/test.txt", checksum="87654321", size=size)
     assert (
-        self == other
+        self.compare(other)
     ) == self.Match.COPY_UNSYNCED_OR_CORRUPT_DATA, "not recognized: corrupt copy"
 
     other = cls(path="//tmp/tmp/test2.txt", checksum=checksum, size=20)
     assert (
-        self == other
+        self.compare(other)
     ) == self.Match.CHECKSUM_COLLISION, "not recognized: checksum collision"
 
     other = cls(path="//tmp/tmp/test2.txt", checksum="87654321", size=20)
-    assert (self == other) == self.Match.UNRELATED, "not recognized: unrelated file"
+    assert (self.compare(other)) == self.Match.UNRELATED, "not recognized: unrelated file"
 
 
 test_data_validation_file()
@@ -2581,7 +2590,7 @@ def report_multline_print(
             # logging.debug("*" * column_width)
             logging.debug("-" * column_width)
 
-        logging.debug(f"Result  : {file.Match(file==other).name}")
+        logging.debug(f"Result  : {file.Match(file.compare(other)).name}")
         logging.debug(display_str("subject", file))
         logging.debug(display_str("other  ", other))
         logging.debug("-" * column_width)

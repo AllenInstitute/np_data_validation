@@ -104,15 +104,11 @@ def find_invalid_copies_in_db(
     Check for invalid copies of the subject file in database.
     """
     matches = db.get_matches(subject)
-    match_type = [(subject == match) for match in matches] if matches else []
+    match_type = [subject.compare(match) for match in matches] if matches else []
     return [
         m
         for i, m in enumerate(matches)
-        if match_type[i] in [
-            subject.Match.COPY_UNSYNCED_CHECKSUM,
-            subject.Match.COPY_UNSYNCED_OR_CORRUPT_DATA,
-            subject.Match.COPY_UNSYNCED_DATA
-        ]
+        if match_type[i] in dv.DataValidationFile.INVALID_COPIES
     ] or None
 
 
@@ -156,7 +152,7 @@ def exchange_if_checksum_in_db(
         return matches[0]
     if len(matches) > 1 and not types_equal:
         for m in matches:
-            submatches = db.get_matches(m,match=[subject.Match.VALID_COPY,subject.Match.VALID_COPY_RENAMED])
+            submatches = db.get_matches(m,match=dv.DataValidationFile.VALID_COPIES)
             # if any of the matches have a valid copy in the db
             if submatches:
                 return m
@@ -299,10 +295,7 @@ def find_valid_backups(
             try_path = try_backup / subject.relative_path
             if try_path.exists():
                 candidate = generate_checksum(subject.__class__(path=try_path.as_posix()), db)
-                if (subject == candidate) in [
-                    subject.Match.VALID_COPY_RENAMED,
-                    subject.Match.VALID_COPY,
-                ]:
+                if subject.compare(candidate) in dv.DataValidationFile.VALID_COPIES:
                     backups.add(candidate)
                     # could continue here and check all backup paths
                     # to get as much info as possible before deleting the file
@@ -320,10 +313,7 @@ def find_valid_backups(
                     candidate = generate_checksum(
                         subject.__class__(path=d.path, size=subject.size), db
                     )
-                    if (subject == candidate) in [
-                        subject.Match.VALID_COPY_RENAMED,
-                        subject.Match.VALID_COPY,
-                    ]:
+                    if subject.compare(candidate) in dv.DataValidationFile.VALID_COPIES:
                         backups.add(candidate)
                         # could continue here and check all backup paths
                         # to get as much info as possible before deleting the file

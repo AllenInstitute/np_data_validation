@@ -66,9 +66,9 @@ def clear_orphan_files():
         if not matches:
             return
         for m in matches:
-            if (file==m)>=file.Match.VALID_COPY_RENAMED: # we filtered for this in call to get_matches but double-check
+            if file.compare(m)>=file.Match.VALID_COPY_RENAMED: # we filtered for this in call to get_matches but double-check
                 if any(bkup in str(m.path) for bkup in ["np-exp", "prod0"]):
-                    print(f"Deleting {file.path} because it matches {m.path}: {file.Match(file==m).name}")
+                    print(f"Deleting {file.path} because it matches {m.path}: {file.Match(file.compare(m)).name}")
                     file.path.unlink()
                     return
                     
@@ -166,7 +166,7 @@ def clear_dirs_fast():
             continue
         for m in matches:
             if (
-                (file == m) > 20
+                file.compare(m) > 20
                 and any(sub in str(m.path) for sub in ['np-exp','prod0','ecephys_session_'])
             ):  # valid copy
                 deleted += file.path.stat().st_size

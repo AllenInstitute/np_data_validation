@@ -973,6 +973,51 @@ class DataValidationFile(abc.ABC):
         VALID_COPY = 21
         VALID_COPY_RENAMED = 22
         
+        
+    """`(self==other)` will be in the returned list if `self` and `other` are
+    suspected to be the same file"""
+    SELVES:List[Match] = [
+            Match.SELF,
+            Match.SELF_MISSING_SELF,
+            Match.SELF_MISSING_OTHER,
+            Match.SELF_CHECKSUM_TYPE_MISMATCH,
+            ]
+    
+    """`(self==other)` will be in the returned list if `other` is a
+    checksum-validated copy of `self`"""
+    VALID_COPIES:List[Match] = [
+        Match.VALID_COPY, 
+        Match.VALID_COPY_RENAMED,
+        ]
+    
+    """`(self==other)` will be in the returned list if file names and sizes
+        suggest `other` is a copy of `self`, and checksums do not contraindicate, but
+        additional checksums need to be generated to confirm"""
+    UNCONFIRMED_COPIES:List[Match] = [
+        Match.COPY_MISSING_BOTH, 
+        Match.COPY_MISSING_SELF,
+        Match.COPY_MISSING_OTHER,
+        Match.COPY_CHECKSUM_TYPE_MISMATCH,
+        Match.POSSIBLE_COPY_RENAMED,
+    ]
+        
+    """`(self==other)` will be in the returned list if the `other` has a checksum or
+    size that indicates an invalid copy or out-of-date information"""     
+    INVALID_COPIES:List[Match] = [
+            Match.COPY_UNSYNCED_CHECKSUM,
+            Match.COPY_UNSYNCED_OR_CORRUPT_DATA,
+            Match.COPY_UNSYNCED_DATA,
+        ]
+    """`(self==other)` will be in the returned list if the `other` has properties
+    that suggest it should be ignored for the purposes of validating data"""    
+    IGNORED:List[Match] = [
+            Match.UNRELATED,
+            Match.UNKNOWN,
+            Match.UNKNOWN_CHECKSUM_TYPE_MISMATCH,
+            Match.CHECKSUM_COLLISION,
+            Match.SELF_PREVIOUS_VERSION,
+        ]
+        
     def __eq__(self, other):
         """Test equality of two DataValidationFile objects"""
         # size and path fields are required entries in a DVF entry in database -

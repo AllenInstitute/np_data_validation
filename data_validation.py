@@ -863,7 +863,7 @@ class DataValidationFile(abc.ABC):
 
     @property
     def checksum(self):
-        if hasattr(self, "_checksum") and self._checksum is not None:
+        if hasattr(self, "_checksum"):
             return self._checksum
         return None
 
@@ -877,12 +877,6 @@ class DataValidationFile(abc.ABC):
     def generate_checksum(cls, path, size=None) -> str:
         cls.checksum_test(cls.checksum_generator)
         return cls.checksum_generator(path, size=size)
-
-    @property
-    def checksum(self) -> str:
-        if not hasattr(self, "_checksum"):
-            return None
-        return self._checksum
 
     def report(self, other: Union[DataValidationFile, List[DataValidationFile]]):
         """Log a report on the comparison with one or more files"""

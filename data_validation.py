@@ -905,6 +905,12 @@ class DataValidationFile(abc.ABC):
     def __repr__(self):
         return f"(path='{self.path.as_posix() or ''}', checksum='{self.checksum or ''}', size={self.size or ''})"
 
+    def __str__(self):
+        possible_session = f"{self.session.folder if (hasattr(self,'session') and self.session) else ''}"
+        possible_session = possible_session if possible_session not in self.name else ''
+        possible_probe = f"{'probe'+self.probe_dir+' ' if self.probe_dir else ''}"
+        return f"{possible_session}{possible_probe}{self.name}"
+    
     def __lt__(self, other):
         if self.name and other.name:
             if self.name == other.name:
@@ -1519,21 +1525,22 @@ class MongoDataValidationDB(DataValidationDB):
             upsert=True,  # add new entry if not found
             hint="unique",
         )
+        
         if not result.acknowledged:
             logging.info(f"Failed to add to MongoDB {file}")
             return
         if result.matched_count > 1:
             logging.warning(
-                f"Multiple {file.type} entries for {file.path} in MongoDB - should be unique"
+                f"Multiple {file.type} entries for {file} in MongoDB - should be unique"
             )
             return
         if result.upserted_id:
-            logging.info(
-                f"Added {file.name} to MongoDB with {file.checksum_name} checksum"
+            logging.debug(
+                f"Added {file} to MongoDB with {file.checksum_name} checksum"
             )
         elif result.modified_count:
             logging.debug(
-                f"Updated {file.name} in MongoDB with {file.checksum_name} checksum"
+                f"Updated {file} in MongoDB with {file.checksum_name} checksum"
             )
 
     @classmethod

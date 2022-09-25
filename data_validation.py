@@ -2538,9 +2538,10 @@ class DataValidationStatus:
 
             if self.file.compare(dest_file) in self.file.VALID_COPIES:
                 logging.debug(f"Copied and validated: {self.file} -> {final_dest}")
+                self.file.matches.append(dest_file)
                 break
             elif self.file.compare(dest_file) in self.file.INVALID_COPIES:
-                logging.debug(
+                logging.info(
                     f"Copy validation failed - retrying: {self.file} -> {final_dest}"
                 )
                 # the source data may have changed, and we picked up an old checksum
@@ -2550,7 +2551,7 @@ class DataValidationStatus:
                     break
                 continue
             else:
-                logging.debug(
+                logging.info(
                     f"Unexpected copy validation result  {self.file.compare(dest_file).name} - retrying:  {self.file} -> {final_dest}"
                 )
                 continue

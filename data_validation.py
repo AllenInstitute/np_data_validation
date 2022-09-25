@@ -1030,10 +1030,10 @@ class DataValidationFile(abc.ABC):
     def __hash__(self):
         # this might be a bad idea: added to allow for set() operations on DVFiles to remove duplicates when getting
         # a database - but DVFiles are mutable
-        return hash(self.checksum) ^ hash(self.size) ^ hash(self.path.as_posix())    
+        return hash(self.checksum) ^ hash(self.size) ^ hash(self.path.as_posix().lower())    
      
     def __eq__(self, other):
-        return self.checksum == other.checksum and self.size == other.size and self.path == other.path
+        return hash(self) == hash(other)
     
     def compare(self, other: DataValidationFile) -> Match:
         """Test equality of two DataValidationFile objects"""
@@ -1253,11 +1253,6 @@ class DataValidationFile(abc.ABC):
             if self.checksum_name != other.checksum: 
                 return self.__class__.Match.UNKNOWN_CHECKSUM_TYPE_MISMATCH
             return self.__class__.Match.UNKNOWN
-
-    def __hash__(self):
-        # this might be a bad idea: added to allow for set() operations on DVFiles to remove duplicates when getting
-        # a database - but DVFiles are mutable
-        return hash(self.checksum) ^ hash(self.size) ^ hash(self.path.as_posix())
 
 
 class CRC32DataValidationFile(DataValidationFile, SessionFile):

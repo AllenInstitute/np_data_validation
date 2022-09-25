@@ -982,49 +982,50 @@ class DataValidationFile(abc.ABC):
         VALID_COPY_RENAMED = 22
         
         
-    """`(self.compare(other))` will be in the returned list if `self` and `other` are
-    suspected to be the same file"""
-    SELVES:List[Match] = [
+    SELVES:Tuple[Match] = (
             Match.SELF,
             Match.SELF_MISSING_SELF,
             Match.SELF_MISSING_OTHER,
             Match.SELF_CHECKSUM_TYPE_MISMATCH,
-            ]
+    )
+    """`(self.compare(other))` will be in the returned list if `self` and `other` are
+    suspected to be the same file"""
     
-    """`(self.compare(other)` will be in the returned list if `other` is a
-    checksum-validated copy of `self`"""
-    VALID_COPIES:List[Match] = [
+    VALID_COPIES:Tuple[Match] = (
         Match.VALID_COPY, 
         Match.VALID_COPY_RENAMED,
-        ]
+    )
+    """`(self.compare(other)` will be in the returned list if `other` is a
+    checksum-validated copy of `self`"""
     
-    """`(self.compare(other))` will be in the returned list if file names and sizes
-        suggest `other` is a copy of `self`, and checksums do not contraindicate, but
-        additional checksums need to be generated to confirm"""
-    UNCONFIRMED_COPIES:List[Match] = [
+    UNCONFIRMED_COPIES:Tuple[Match] = (
         Match.COPY_MISSING_BOTH, 
         Match.COPY_MISSING_SELF,
         Match.COPY_MISSING_OTHER,
         Match.COPY_CHECKSUM_TYPE_MISMATCH,
         Match.POSSIBLE_COPY_RENAMED,
-    ]
+    )
+    """`(self.compare(other))` will be in the returned list if file names and sizes
+        suggest `other` is a copy of `self`, and checksums do not contraindicate, but
+        additional checksums need to be generated to confirm"""
         
-    """`(self.compare(other))` will be in the returned list if the `other` has a checksum or
-    size that indicates an invalid copy or out-of-date information"""     
-    INVALID_COPIES:List[Match] = [
+    INVALID_COPIES:Tuple[Match] = (
             Match.COPY_UNSYNCED_CHECKSUM,
             Match.COPY_UNSYNCED_OR_CORRUPT_DATA,
             Match.COPY_UNSYNCED_DATA,
-        ]
-    """`(self.compare(other))` will be in the returned list if the `other` has properties
-    that suggest it should be ignored for the purposes of validating data"""    
-    IGNORED:List[Match] = [
+    )
+    """`(self.compare(other))` will be in the returned list if the `other` has a checksum or
+    size that indicates an invalid copy or out-of-date information"""     
+    
+    IGNORED:Tuple[Match] = (
             Match.UNRELATED,
             Match.UNKNOWN,
             Match.UNKNOWN_CHECKSUM_TYPE_MISMATCH,
             Match.CHECKSUM_COLLISION,
             Match.SELF_PREVIOUS_VERSION,
-        ]
+    )
+    """`(self.compare(other))` will be in the returned list if the `other` has properties
+    that suggest it should be ignored for the purposes of validating data"""    
     
     def __hash__(self):
         # this might be a bad idea: added to allow for set() operations on DVFiles to remove duplicates when getting
@@ -1584,11 +1585,7 @@ class MongoDataValidationDB(DataValidationDB):
             # skip path, which may be normalized by DVFile constructor
             if match and all(
                 m
-                in [
-                    file.Match.SELF,
-                    file.Match.SELF_MISSING_SELF,
-                    file.Match.SELF_MISSING_OTHER,
-                ]
+                in DataValidationFile.SELVES
                 for m in match
             ):  # we'll never want to search for self_missing_other in db, but included here just in case it's in match
                 entries = [
@@ -1597,7 +1594,7 @@ class MongoDataValidationDB(DataValidationDB):
                     if (e["size"] == file.size or e["checksum"] == file.checksum)  # *
                 ]
             elif match and all(
-                m in [file.Match.VALID_COPY, file.Match.VALID_COPY_RENAMED]
+                m in DataValidationFile.VALID_COPIES
                 for m in match
             ):
                 entries = [

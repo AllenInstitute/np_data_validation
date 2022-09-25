@@ -2359,10 +2359,205 @@ class DataValidationStatus:
             # no backups with checksums found, but we can checksum the 'best' backup found
             self.backups = highest_backups
 
-    def action(self):
+    def copy(
+        self,
+        dest_root_dir_or_filepath: Union[str, pathlib.Path] = NPEXP_PATH,
+        add_session_folder=True,
+        validate: bool = True,
+        recopy: bool = False,
+        remove_source: bool = False,
+    ):
+        """Copy the file to a new location, with optional checksum validation.
+
+        Args:
+            dest_root_dir_or_filepath (Union[str,pathlib.Path], optional): Works best
+            with a root directory specified, then the source file's relative path will
+            be used. Defaults to NPEXP_PATH.
+
+            add_session_folder (bool, optional): If a session folder is missing from
+            destination dir or filepath, the source file's session folder will be added if possible. Defaults to True.
+
+            validate (bool, optional): Ensure checksums match for source and destination. Defaults to True.
+
+            recopy (bool, optional): Overwrite existing file if it's suspected to be the
+            same, and ignore previous copies made to the same location. Defaults to False.
+
+            remove_source (bool, optional): Automatically sets validate=True. Defaults to False.
+
+        """
+        if not self.file.path.exists():
+            logging.exception(f"Copy aborted - source file does not exist: {self.file.path}")
+            return
+        
+        if remove_source:
+            validate = True
+
+        dest_root_dir_or_filepath = pathlib.Path(dest_root_dir_or_filepath)
+
+        # get from path
+        session_folder = Session.folder(dest_root_dir_or_filepath)
+
+        if not session_folder and isinstance(self.file, SessionFile):
+            # get from our file that will be copied
+            session_folder = self.file.session.folder
+
+        elif session_folder and isinstance(self.file, SessionFile):
+            if session_folder != self.file.session.folder:
+                raise SessionError(
+                    f"session folder mismatch: destination {session_folder} != src {self.file.session.folder}"
+                )
+
+        # check if dest is a dir or file
+        is_dir = False
+        try:
+            SessionFile(dest_root_dir_or_filepath)
+        except FilepathIsDirError:
+            is_dir = True
+        except SessionError:
+            is_dir = False
+
+        if not is_dir:
+            dest_root = dest_root_dir_or_filepath.parent
+            dest_relative = dest_root_dir_or_filepath.name
+
+        if is_dir:
+            dest_root = dest_root_dir_or_filepath
+            dest_relative = None
+
+        if (
+            add_session_folder is True
+            and session_folder is not None
+            and session_folder not in dest_root.parts
+        ):
+            dest_root = dest_root / session_folder
+
+        if dest_relative is None:
+
+            if not isinstance(self.file, SessionFile):
+                dest_relative = self.file.path.name
+            elif session_folder in dest_root.parts:
+                dest_relative = self.file.relative_path
+            else:
+                dest_relative = self.file.session_relative_path
+
+        final_dest = dest_root / dest_relative
+
+        # make DVFile for proposed dest
+        try:
+            dest_file = self.db.DVFile(path=final_dest)
+        except SessionError:
+            dest_file = OrphanedDVFile(path=final_dest)
+
+        if self.file.probe_dir != dest_file.probe_dir:
+            logging.warning(
+                f"copy aborted - probe_dir mismatch: src {self.file.probe_dir} != dest {dest_file.probe_dir}"
+            )
+            return
+
+        # check whether the file already exists in the database
+        dest_matches = self.db.get_matches(dest_file, match=dest_file.SELVES)
+
+        # determine next action:
+        if recopy is True:
+            pass  # we'll copy regardless
+        elif not dest_file.path.exists():
+            # we may not want to copy if we copied to this location previously and
+            # since cleared the file
+            if dest_matches and any(
+                s.compare(d) in s.VALID_COPIES
+                for s in self.selves
+                for d in dest_matches
+            ):
+                return
+        elif self.file.path.stat() == final_dest.stat() or any(
+            s.compare(d) in (s.VALID_COPIES, s.UNCONFIRMED_COPIES)
+            for s in self.selves
+            for d in dest_matches
+        ):  # we previously copied to this location and the file still exists
+            if not validate:
+                return  # we're not validating and the existing dest file looks like a copy according to OS stats
+            elif any(
+                s.compare(d) in s.VALID_COPIES
+                for s in self.selves
+                for d in dest_matches
+            ):
+                return  # we have a valid copy already
+
+        final_dest.parent.mkdir(parents=True, exist_ok=True)
+
+        while True:
+
+            try:
+                logging.info(f"Copying: {self.file} -> {final_dest}")
+                shutil.copy2(self.file.path, final_dest)
+
+            except OSError as e:
+                logging.warning(f"Copy failed - {e}: {self.file} -> {final_dest}")
+                return
+
+            if not final_dest.exists():
+                logging.debug(f"Copy failed - re-trying: {self.file} -> {final_dest}")
+                continue
+
+            if not validate:
+                logging.debug(
+                    f"Copied (without validation): {self.file} -> {final_dest}"
+                )
+                break
+
+            if not any(s.checksum for s in self.selves):
+                self.file = strategies.generate_checksum(self.file, self.db)
+            else:
+                # we have a checksum already so avoid regenerating
+                for s in self.selves:
+                    if isinstance(s, self.db.DVFile) and s.checksum:
+                        # use type specified in db if possible
+                        self.file = s
+                        break
+                else:
+                    # use the first one
+                    self.file = [s for s in self.selves if s.checksum][0]
+                    # convert dest_file to the same type as self.file
+                    dest_file = self.file.__class__(path=final_dest)
+            # generate checksum for newly-copied dest_file
+            dest_file = strategies.generate_checksum(dest_file, self.db)
+
+            if self.file.compare(dest_file) in self.file.VALID_COPIES:
+                logging.debug(f"Copied and validated: {self.file} -> {final_dest}")
+                break
+            elif self.file.compare(dest_file) in self.file.INVALID_COPIES:
+                logging.debug(
+                    f"Copy validation failed - retrying: {self.file} -> {final_dest}"
+                )
+                # the source data may have changed, and we picked up an old checksum
+                # the db - regen
+                self.file = strategies.generate_checksum(self.file, self.db)
+                if self.file.compare(dest_file) in self.file.VALID_COPIES:
+                    break
+                continue
+            else:
+                logging.debug(
+                    f"Unexpected copy validation result  {self.file.compare(dest_file).name} - retrying:  {self.file} -> {final_dest}"
+                )
+                continue
+
+        if (
+            remove_source is True
+            and validate is True
+            and self.file.compare(dest_file) in self.file.VALID_COPIES
+        ):
+            try:
+                self.file.path.unlink()
+                logging.info(f"DELETED source file after copy: {self.file.path}")
+            except PermissionError:
+                logging.exception(f"Permission denied: could not delete {self.file}")
+            except OSError as e:
+                logging.exception(f"Failed to remove {self.file} file after copy: {e}")
+
+    def ensure_checksum(self):
         if not self.valid_backups or not self.unconfirmed_backups:
-            # * note: it's possible to have the same entry in valid_backups and
-            #  unconfirmed_backups
+            # * note: it's possible to have the same entry in valid_backups
+            #  and unconfirmed_backups:
             #  since we evaluate all entries in self.selves vs all entries in
             #  self.backups, if any of the entries in self.selves don't have a checksum
             #  we will end up with some unconfirmed_backups regardless

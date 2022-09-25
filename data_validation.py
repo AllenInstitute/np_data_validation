@@ -588,7 +588,7 @@ class SessionFile:
         #!watch out: Different meaning of 'root' to 'root_path' above
 
         This property will be most useful when looking for files in lims ecephys_session_XX
-        folders, since the 'first parent with session string in name'cis often renamed in lims:
+        folders, since the 'first parent with session string in name' is often renamed in lims:
         e.g. '123456789_366122_20220618_probeA_sorted' becomes 'job-id/probe-id_probeA'
         - filepaths relative to the renamed folder should be preserved, so we should be
         able to glob for them using this property.

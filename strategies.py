@@ -224,7 +224,7 @@ def delete_if_valid_backup_in_db(
 
         except PermissionError:
             dv.logging.exception(
-                f"Permission denied: could not delete {subject.path.as_uri()}"
+                f"Permission denied: could not delete {subject}"
             )
 
     return 0

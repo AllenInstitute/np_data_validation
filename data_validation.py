@@ -2752,7 +2752,6 @@ def test_data_validation_file():
     class Test(DataValidationFile):
         def valid(path):
             return True
-        def compare(self, other):
         checksum_generator = "12345678"
         checksum_test = None
         checksum_validate = valid

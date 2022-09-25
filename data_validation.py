@@ -1645,6 +1645,8 @@ class MongoDataValidationDB(DataValidationDB):
                         },
                     ),
                 )
+            # TODO consolidate path+checksum query into one that finds either, then
+            # if none returned find size matches separately 
             if file.size:
                 entries += list(
                     cls.db.find(

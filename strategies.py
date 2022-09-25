@@ -64,6 +64,7 @@ def generate_checksum(
     """
     Generate a checksum for a file and add to database.
     """
+    dv.logging.info(f"Generating {subject.checksum_name} checksum for {subject}")
     checksum = subject.generate_checksum(subject.path.as_posix(), subject.size)
     new_file = subject.__class__(
         path=subject.path.as_posix(), size=subject.size, checksum=checksum
@@ -137,7 +138,7 @@ def exchange_if_checksum_in_db(
     if subject.checksum:
         return subject
 
-    accepted_matches = [subject.Match.SELF,subject.Match.SELF_MISSING_SELF]
+    accepted_matches = subject.SELVES
     matches = db.get_matches(subject, match=accepted_matches)
 
     if not matches:
@@ -184,7 +185,7 @@ def delete_if_valid_backup_in_db(
         # a final check before deleting (all items in 'backups' should be valid copies):
         if subject.checksum != backups[0].checksum or subject.size != backups[0].size:
             raise AssertionError(
-                f"Not a valid backup, something has gone wrong: {subject} {backups[0]}"
+                f"Not a valid backup, something has gone wrong: {subject}"
             )
 
         # currently, we don't want to delete raw data on A/B drives before the sorted data make it to npexp
@@ -207,13 +208,13 @@ def delete_if_valid_backup_in_db(
             )
         ):
             dv.logging.debug(
-                f"Skipped deletion of raw probe data on Acq: no sorted folders on npexp or lims yet {subject.session.folder} "
+                f"{subject} Skipped deletion of raw probe data on Acq: no sorted folders on npexp or lims yet "
             )
             return 0
 
         try:
             subject.path.unlink()
-            dv.logging.info(f"DELETED {subject.path.as_posix()}")
+            dv.logging.info(f"DELETED {subject}")
 
             return subject.size
 

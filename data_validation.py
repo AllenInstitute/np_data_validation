@@ -124,7 +124,7 @@ import tempfile
 import threading
 import traceback
 import zlib
-from typing import Any, Callable, Generator, List, Set, Union
+from typing import Any, Callable, Generator, List, Literal, Set, Tuple, Union
 
 try:
     import pymongo
@@ -135,6 +135,9 @@ import data_getters as dg  # from corbett's QC repo
 import nptk  # utilities for np rigs and data
 import strategies  # for interacting with database
 
+NPEXP_PATH = pathlib.Path("//allen/programs/mindscope/workgroups/np-exp")
+ 
+# setup logging ------------------------------------------------------------------------
 # LOG_DIR = fR"//allen/programs/mindscope/workgroups/np-exp/ben/data_validation/logs/"
 log_level = logging.DEBUG
 log_format = "%(asctime)s %(threadName)s %(message)s" #? %(relativeCreated)6d 
@@ -314,7 +317,7 @@ def chunk_hashlib(
     return hasher.hexdigest()
 
 
-def valid_sha256_checksum(value: str) -> bool:
+def valid_sha256_checksum(*args, value:str=None, **kwargs) -> bool:
     """Validate sha256/sha3_256 checksum"""
     if (
         isinstance(value, str)
@@ -692,7 +695,7 @@ class SessionFile:
             sync_path = nptk.Rig.Sync.path
         elif rig_from_path:
             rig_idx = nptk.Rig.rig_str_to_int(rig_from_path)
-            sync_path = "//" + nptk.ConfigHTTP.get_np_computers(rig_idx, "sync")[nptk.Rig.sync.value]
+            sync_path = "//" + nptk.ConfigHTTP.get_np_computers(rig_idx, "sync")[f"NP.{rig_idx}-Sync"]
         else:
             sync_path = None
         # the z drive/neuropix data folder for this rig
@@ -738,7 +741,6 @@ class DataValidationFile(abc.ABC):
     # accept a function, return nothing but raise exception if test fails
 
     checksum_validate: Callable[[str], bool] = NotImplementedError()
-
     # a function that accepts a string and confirms it conforms to the checksum
     # format, return True or False
 
@@ -935,8 +937,6 @@ class DataValidationFile(abc.ABC):
         conditions need updating (Sept'22), but the most used comparisons are still correct:
         self (5/6/7), possible copies (>15), valid backups (>20)
         """
-
-        # TODO update to consider checksum_name == checksum_name
 
         # =======================================================================================
         # files with nothing in common - these comparisons are generally not useful & filtered out
@@ -2907,3 +2907,6 @@ available_DVFiles = {
     "sha256": SHA256DataValidationFile,
     "crc32": CRC32DataValidationFile,
     }
+# from allensdk/brain_observatory/ecephys/copy_utility/_schemas.py:
+lims_available_hashers = {"sha3_256": hashlib.sha3_256, "sha256": hashlib.sha256}
+

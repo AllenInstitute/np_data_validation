@@ -347,7 +347,7 @@ def test_sha3_256_function(func, *args, **kwargs):
     ), "checksum function incorrect"
 
 
-def valid_crc32_checksum(value: str) -> bool:
+def valid_crc32_checksum(*args,value:str=None,**kwargs) -> bool:
     """validate crc32 checksum"""
     if (
         isinstance(value, str)
@@ -852,8 +852,8 @@ class DataValidationFile(abc.ABC):
             checksum = self.__class__.generate_checksum(
                 self.path, self.size
             )  # change to use instance method if available
-
-        if checksum and not self.__class__.checksum_validate(checksum):
+        
+        if checksum and not self.checksum_validate(value=checksum):
             raise ValueError(
                 f"{self.__class__.__name__}: trying to set an invalid {self.checksum_name} checksum"
             )
@@ -1318,19 +1318,29 @@ class OrphanedDVFile(DataValidationFile):
     """Files with no session identifier, containing only enough information to search
     the database for matches"""
 
-    checksum_threshold: int = 0  # don't generate checksum for any files by default
-    checksum_name: str = SHA3_256DataValidationFile.checksum_name
+    default_checksum_type = "sha3_256"
+    
+    checksum_threshold: int  = None
+    checksum_name: str = None
     checksum_generator: Callable[
         [str], str
-    ] = SHA3_256DataValidationFile.checksum_generator
-    checksum_test: Callable[[Callable], None] = SHA3_256DataValidationFile.checksum_test
+    ] = None
+    checksum_test: Callable[[Callable], None] = None
     checksum_validate: Callable[
         [str], bool
-    ] = SHA3_256DataValidationFile.checksum_validate
+    ] = None
 
-    def __init__(self, path: str = None, checksum: str = None, size: int = None):
-        DataValidationFile.__init__(self, path=path, checksum=checksum, size=size)
-
+    def __init__(self, *args, type: Literal["sha3_256","sha256","crc32"] = default_checksum_type, **kwargs):
+        if type not in available_DVFiles.keys():
+            raise ValueError(f"Unknown DVFile type: {type}")
+        self.convert(type)
+        DataValidationFile.__init__(self, *args, **kwargs)
+        
+    def convert(self, type: Literal["sha3_256","sha256","crc32"]):
+        """Convert class to use specific checksum type"""
+        for attr in ["checksum_threshold","checksum_name", "checksum_generator", "checksum_test", "checksum_validate"]:
+            setattr(self, attr, getattr(available_DVFiles[type], attr))
+        self._checksum = None
 
 class DataValidationDB(abc.ABC):
     """Represents a database of files with validation metadata
@@ -1659,6 +1669,7 @@ class MongoDataValidationDB(DataValidationDB):
             # below list will be empty when searching with a SessionFile
             [
                 OrphanedDVFile(
+                    type=entry["type"],
                     path=entry["path"],
                     checksum=entry["checksum"],
                     size=entry["size"],
@@ -2750,7 +2761,7 @@ def test_data_validation_file():
     """test the data validation file class"""
 
     class Test(DataValidationFile):
-        def valid(path):
+        def valid(path, *args, **kwargs):
             return True
         checksum_generator = "12345678"
         checksum_test = None

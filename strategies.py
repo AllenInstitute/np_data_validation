@@ -79,7 +79,7 @@ def generate_checksum_if_not_in_db(
     """
     If the database has no entry for the subject file, generate a checksum for it.
     """
-    accepted_matches = [subject.Match.SELF, subject.Match.SELF_MISSING_SELF]
+    accepted_matches = subject.SELVES
     matches = db.get_matches(subject, match=accepted_matches)
     if not matches:
         generate_checksum(subject, db)
@@ -119,10 +119,7 @@ def find_valid_copies_in_db(
     """
     Check for valid copies of the subject file in database.
     """
-    accepted_matches = [
-        subject.Match.VALID_COPY_RENAMED,
-        subject.Match.VALID_COPY,
-    ]
+    accepted_matches = subject.VALID_COPIES
     matches = db.get_matches(subject, match=accepted_matches)
     return matches or None
 

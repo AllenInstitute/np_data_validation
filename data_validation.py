@@ -1660,7 +1660,8 @@ class MongoDataValidationDB(DataValidationDB):
                 available_DVFiles[entry["type"]](
                     path=entry["path"],
                     checksum=entry["checksum"],
-                    size=entry["size"],
+                    size=entry.get("size",None), # size not required, may be missing
+                    # hostname=entry.get("hostname",None), # hostname may be missing from older entries
                 )
                 for entry in entries
                 if entry.get("session_id", False)
@@ -1672,7 +1673,8 @@ class MongoDataValidationDB(DataValidationDB):
                     type=entry["type"],
                     path=entry["path"],
                     checksum=entry["checksum"],
-                    size=entry["size"],
+                    size=entry.get("size",None), # size not required, may be missing
+                    # hostname=entry.get("hostname",None), # hostname may be missing from older entries
                 )
                 for entry in entries
                 if not entry.get("session_id", False)

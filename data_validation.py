@@ -1039,7 +1039,10 @@ class DataValidationFile(abc.ABC):
         """Test equality of two DataValidationFile objects"""
         # size and path fields are required entries in a DVF entry in database -
         # checksum is optional, so we need to check for it in both objects
-
+        if not isinstance(other, DataValidationFile):
+            raise TypeError(
+                f"Cannot compare DataValidationFile to {type(other)}"
+            )
         # -make use of addtl file check: depends on files existing so isn't always
         # reliable
         samefile = None

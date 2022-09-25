@@ -1982,7 +1982,7 @@ class LimsDVDatabase(DataValidationDB):
         return file_hash
 
     @staticmethod
-    def upload_jsons_from_ecephys_session_or_file(session_or_file: Union[int, str, pathlib.Path, DataValidationFile]) -> List[Tuple]:
+    def upload_jsons_from_ecephys_session_or_file(session_or_file: Union[int, str, pathlib.Path, SessionFile]) -> List[Tuple]:
         """Returns a list of tuples of (input_json, output_json) for any given session file
         or session id."""
         if isinstance(session_or_file,(str,pathlib.Path)):
@@ -1991,11 +1991,12 @@ class LimsDVDatabase(DataValidationDB):
             except:
                 return None
         else:
-            if isinstance(session_or_file,(DataValidationFile)):
-                lims_dir = session_or_file.session.lims_path  
+            if isinstance(session_or_file,(SessionFile)):
+                lims_dir = session_or_file.session.lims_path 
             elif isinstance(session_or_file,int):
                 lims_dir = Session(path=f"{session_or_file}_366122_20220618").lims_path
-            
+            else:
+                raise ValueError("session_or_file must be a sessionID or session folder string, or a SessionFile")
         if not lims_dir:
             return None
         
@@ -2014,12 +2015,15 @@ class LimsDVDatabase(DataValidationDB):
                 continue
 
             if len(upload_output_json) > 1:
+                # multiple upload attempts result in multiple output jsons
                 logging.debug(
                     f"Multiple output json files found for {upload_input_json}: {upload_output_json}"
                 )
-                continue
+                # use the most recent:
+                upload_output_json.sort(key=lambda p: str(p), reverse=True)
             
             upload_output_json = upload_output_json[0]
+            logging.debug(f"Using output json file: {upload_output_json}")
 
             input_and_output_jsons.append((upload_input_json, upload_output_json))
         
@@ -2054,7 +2058,7 @@ class LimsDVDatabase(DataValidationDB):
             
             for file in hashes.keys():
                 if all_hashes.get(file,None):
-                    print(f"{file} already in all_hashes")
+                    pass # print(f"{file} already in all_hashes")
                 all_hashes.update({file:{hasher_key:hashes[file]}})
             
         if return_as_dict:

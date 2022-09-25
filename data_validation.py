@@ -680,6 +680,8 @@ class SessionFile:
             and self._z_drive_backup.exists()
             and self._z_drive_backup.as_posix() != self.path.as_posix()
             and "neuropixels_data" not in self.path.parts
+            and self.path != self.get_npexp_path() # if file is on npexp, don't consider z drive as a backup
+            and self.path != self._lims_backup # if file is on lims, don't consider z drive as a backup
         ):
             return self._z_drive_backup
         return None

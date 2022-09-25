@@ -176,14 +176,14 @@ mgc_bkup = lambda host="localhost": pathlib.Path(f"//{host}/C$/ProgramData/Mongo
 ben_desktop = "W10DTMJ0AK6GM"
 if not mgc.resolve().exists() and not mgc_bkup().exists():
     shutil.copy2(mgc_bkup(ben_desktop),mgc.parent)
-mongo_cloud_client = pymongo.MongoClient(
+mongo_cloud_client:pymongo.MongoClient = pymongo.MongoClient(
     host= mongo_cloud_uri,
     tls=True,
     tlsCertificateKeyFile=mgc.as_posix() if mgc.exists() else mgc_bkup().as_posix(),
     maxPoolSize = 100, # 500 max on free plan -default 100
 )
 
-for client in [mongo_local_client, mongo_cloud_client]:
+for client in [mongo_cloud_client]: # mongo_local_client
     MONGO_COLLECTION = client["prod"]["snapshots"]
     try:
         MONGO_COLLECTION.count_documents({})
@@ -826,7 +826,8 @@ class DataValidationFile(abc.ABC):
         self._probe_dir = (
             probe_name if path and probe is not None else None
         )  # avoid checking 'if probe' since it could equal 0
-
+        
+        # avoid checking 'if size' since it could equal 0
         if self.path and size is None:
             try:
                 size = os.path.getsize(self.path.as_posix())
@@ -1470,7 +1471,7 @@ class MongoDataValidationDB(DataValidationDB):
     A database that stores validation data in mongodb
     """
 
-    DVFile: DataValidationFile = CRC32DataValidationFile  # default
+    DVFile: DataValidationFile = SHA3_256DataValidationFile  # default
     db = MONGO_COLLECTION  # moved to outer so connection to client is made once per session
 
     @classmethod

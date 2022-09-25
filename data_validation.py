@@ -2093,6 +2093,9 @@ class DataValidationStatus:
     """
 
     db: DataValidationDB = MongoDataValidationDB
+    lims_backup: pathlib.Path = None
+    npexp_backup: pathlib.Path = None
+    z_backup: pathlib.Path = None
 
     def __init__(
         self,
@@ -2101,27 +2104,272 @@ class DataValidationStatus:
         checksum: str = None,
         size: int = None,
     ):
+        if isinstance(file,DataValidationFile):
+            self.file = file
         if not file or not isinstance(file, DataValidationFile):
             if isinstance(file, (str,pathlib.Path)):  # path provided as positional argument
                 path = file
-            # generate a file from the default DataValidationFile class
-            file = self.db.DVFile(path=path, checksum=checksum, size=size)
-        self.file = file
+            try:
+                # make a new object with the default DVFile class
+                self.file = self.db.DVFile(path=path, size=size, checksum=checksum)
+            except SessionError:
+                # create non-SessionFile DVFile object, use custom get_matches method
+                self.file = OrphanedDVFile(path=path, size=size, checksum=checksum)
+        
+        # get matches from database that have a checksum 
+        self.matches = self.db.get_matches(self.file) # for SessionFiles this only returns other files with session_id in path
+        
+        self.backups: List[DataValidationFile] = []
+        highest_backups: List[DataValidationFile] = [] # if no checksummed backups in db, go checksum this file
+        if isinstance(self.file, SessionFile):
+            # create DVfiles for any backup files currently available - 
+            # we'll descend the backup hierarchy and check against matches from the db
+            for attr in ['lims_backup', 'npexp_backup', 'z_drive_backup']:
+                backup_path = getattr(self.file, attr)
+                if not backup_path:
+                    continue
+                
+                # make a new object with the default DVFile class
+                backup_file = self.db.DVFile(path=backup_path)
+                # - these must be SessionFiles, since standard _backup paths are
+                # constructed from session_id
+                
+                if attr == 'lims_backup' and not [b for b in self.matches if backup_file.compare(b) in b.SELVES]:
+                    # grab the lims hash recorded when uploaded to lims
+                    lims_file = LimsDVDatabase.get_matches(self.file) or None
+                    if lims_file:
+                        self.db.add_file(lims_file)
+                        self.matches.extend(lims_file) 
+                
+                if attr == 'npexp_backup' and self.file.path == self.file.get_npexp_path():
+                    # no point checking for npexp or z drive backups if the file is in
+                    # its correct session folder on npexp already
+                    break
+                
+                # get checksummed matches for backup file
+                backup_from_matches = [b for b in self.matches if backup_file.compare(b) in b.SELVES]
+                if backup_from_matches and not highest_backups:
+                    highest_backups.extend(backup_from_matches) 
+                elif not highest_backups:
+                    highest_backups.append(backup_file) # store the path in case we need to checksum it 
+                    
+                self.backups.extend(backup_from_matches)
+                # if self.backups:
+                #     break 
+                # TODO we found a backup, and could stop looking
+                # TODO but if we don't have a checksum (or have the wrong type) 
+                # this won't count as a 'valid' backup
+                # either collect all backups and accept any valid, or collect the
+                # highest and either checksum it or out subject
 
-        # TODO cycle through different DVFile classes here until we find matches
-        if (
-            not matches
-            or not isinstance(matches, list)
-            or not isinstance(matches[0], DataValidationFile)
-        ):
-            matches = self.db.get_matches(file=file)
-        self.matches = matches
+        # TODO check get z drive path is working
+        elif isinstance(self.file, OrphanedDVFile):
+            # non-session files may have backups on np-exp or lims too, but we'll only
+            # find out about them via the db
+            # 
+            # for each of our file's matches, provided it's a sessionfile we can see if its path is
+            # the expected np-exp/lims/z-drive path for a backup
+            s_m = session_matches = [sf for sf in self.matches if isinstance(sf, SessionFile)]
+            # while session_matches:
+            #     backups = []
+            # note: we can't use the properties .lims_backup , .npexp_back etc
+            # because they return none if .path == .X_backup to prevent a file being detected as its own backup
+            backup_from_matches = [b for b in s_m if b.path == b._lims_backup and self.file.compare(b) in b.VALID_COPIES]
+            if not backup_from_matches:
+                backup_from_matches = [b for b in s_m if b.path == b._lims_backup and self.file.compare(b) in b.UNCONFIRMED_COPIES]
+            # get checksummed matches for backup file
+            if backup_from_matches and not highest_backups:
+                highest_backups.extend(backup_from_matches) 
+            self.backups.extend(backup_from_matches)
+                
+            # if backups and any(b.path.exists() for b in backups):
+            #     break
+            # if backups:
+            #     highest_backups = backups
+            backup_from_matches = [b for b in s_m if b.path == b.get_npexp_path() and self.file.compare(b) in b.VALID_COPIES]
+            if not backup_from_matches:
+                backup_from_matches = [b for b in s_m if b.path == b.get_npexp_path() and self.file.compare(b) in b.UNCONFIRMED_COPIES]
+            # get checksummed matches for backup file
+            if backup_from_matches and not highest_backups:
+                highest_backups.extend(backup_from_matches) 
+            self.backups.extend(backup_from_matches)
+                
+            backup_from_matches = [b for b in s_m if (b.path == b._z_drive_backup or 'neuropixels_data' in str(b.path)) and self.file.compare(b) in b.VALID_COPIES]
+            if not backup_from_matches:
+                backup_from_matches = [b for b in s_m if (b.path == b._z_drive_backup or 'neuropixels_data' in str(b.path)) and self.file.compare(b) in b.UNCONFIRMED_COPIES]
+            # get checksummed matches for backup file
+            if backup_from_matches and not highest_backups:
+                highest_backups.extend(backup_from_matches) 
+            self.backups.extend(backup_from_matches)
+                    
+            
+        for backups in [self.backups, highest_backups]:
+            if not backups:
+                continue
+        # we're getting loose with the discovery of z_drive_backups here so do a
+        # quick check that our 'subject' file is not the same as the candidate backup
+        # if backups and any(b.path.exists() for b in backups):
+            backups = [b for b in backups if not any(s.compare(b) in DataValidationFile.SELVES for s in self.selves)]
+            backups = [b for b in backups if b.path.exists()] # filter for extant files
+        
+        if not self.backups and highest_backups:
+            # no backups with checksums found, but we can checksum the 'best' backup found
+            self.backups = highest_backups
+        
+    def action(self):
+        if not self.valid_backups or not self.unconfirmed_backups:
+            #* note: it's possible to have the same entry in valid_backups and
+            #  unconfirmed_backups
+            #  since we evaluate all entries in self.selves vs all entries in
+            #  self.backups, if any of the entries in self.selves don't have a checksum
+            #  we will end up with some unconfirmed_backups regardless
+            return 
+        
+        if self.unconfirmed_backups and not self.valid_backups:
+            
+            pref_backup = self.unconfirmed_backups[0] # should be the highest (lims>npexp>z_drive)
+            
+            if pref_backup.checksum and not any(s.checksum for s in self.selves):
+                # our file needs a checksum, and we have a backup with a checksum
+                # - convert our file to backup type and generate
+                new = pref_backup.__class__(self.file.path)
+                self.file = strategies.generate_checksum(new,self.db)
+
+            if not pref_backup.checksum and any(s.checksum for s in self.selves):
+                # our backup needs a checksum, and we have a file with a checksum
+                # - convert backup to our type and generate
+                # - prefer speed with CRC32 vs SHA256:
+                if any(isinstance(s,CRC32DataValidationFile) and s.checksum for s in self.selves):
+                    new = CRC32DataValidationFile(pref_backup.path)
+                elif any(isinstance(s,SHA3_256DataValidationFile) and s.checksum for s in self.selves):
+                    new = SHA3_256DataValidationFile(pref_backup.path)
+                else:
+                    new = [s for s in self.selves if s.checksum][0].__class__(pref_backup.path)                   
+                pref_backup = strategies.generate_checksum(new,self.db)
+                self.matches.append(pref_backup)
+                
+            if not pref_backup.checksum and not any(s.checksum for s in self.selves):
+                # we have no checksums
+                # - prefer speed with CRC32 vs SHA256:
+                new = CRC32DataValidationFile(self.file.path)
+                self.file = strategies.generate_checksum(new,self.db)
+                
+                new = CRC32DataValidationFile(pref_backup.path)
+                pref_backup = strategies.generate_checksum(new,self.db)
+                self.matches.append(pref_backup)
+        
+        if self.valid_backups:
+            pass
+        
+    def report(self):
+        if not self.matches:
+            return self.Backup.NO_MATCHES_IN_DB
+        elif not any(s.compare(m) in (*s.VALID_COPIES, *s.UNCONFIRMED_COPIES) for s in self.selves for m in self.matches):
+            return self.Backup.NO_COPIES_IN_DB
+        elif not self.backups:
+            return self.Backup.NO_BACKUPS_IN_FILESYSTEM
+        elif not any(s.checksum for s in self.selves):
+            return self.Backup.HAS_NO_CHECKSUMS_IN_DB
+        
+        if self.valid_backups:
+            # print('valid backup(s) exist: safe to delete')
+            return self.Backup.HAS_VALID_BACKUP
+        elif self.unconfirmed_backups and not self.invalid_backups:
+            # print('unconfirmed backup(s) exist: need checksum(s) generated')
+            return self.Backup.HAS_UNCONFIRMED_BACKUP
+        elif self.invalid_backups:
+            # print('only invalid backup(s) exist: data may have changed since backup, be careful!')
+            return self.Backup.HAS_POSSIBLE_UNSYNCED_BACKUP
+        return self.Backup.UNKNOWN
+    
+        print(
+            "="*50,
+            "\nFile\n",
+            self.file,
+            "\nEvaluation of matches in database:\n",
+            self.evaluate_backups_in_db().name,
+            # "\nAction:",self.action,
+            "\nEvaluation of matches in filesystem:\n",
+            "n/a\n",
+        )
+
+        if self.evaluate_backups_in_db()< self.Backup.VALID_ON_NPEXP:
+            for match in [m for m in self.matches if self.file.compare(m) >= 10]:
+                print(
+                    "-"*40,"\n",
+                    self.file.Match(self.file.compare(match)).name,
+                    "\n",
+                    match,
+                )
+        print("="*50)
+
+    def evaluate_backups_in_db(self):
+
+        if not self.matches or all(m < 10 for m in self.match_types):
+            return self.Backup.NO_COPIES_IN_DB
+        # TODO must also check backups exist now
+        elif any(m in DataValidationFile.VALID_COPIES for m in self.match_types):
+            # valid copies
+            # test whether they are valid backups
+            if self.valid_lims and not self.invalid_lims:
+                self.action = "delete self"
+                return self.Backup.VALID_ON_LIMS
+            if self.invalid_lims:
+                self.action = "investigate self vs lims copy entries in db"
+                return self.Backup.INVALID_ON_LIMS
+            if self.valid_npexp and not self.invalid_npexp:
+                self.action = "delete self"
+                return self.Backup.VALID_ON_NPEXP
+            if self.invalid_npexp:
+                self.action = "investigate self vs npexp copy entries in db"
+                return self.Backup.INVALID_ON_NPEXP
+            if self.valid_z and not self.invalid_z:
+                self.action = "delete self"
+                return self.Backup.VALID_ON_ZDRIVE
+            if self.invalid_z:
+                self.action = "investigate self vs z copy entries in db"
+                return self.Backup.INVALID_ON_ZDRIVE
+            if not any(10 < m < 15 for m in self.match_types):
+                self.action = "possibly delete self - investigate locations of copies"
+                return self.Backup.VALID_ON_OTHER
+            self.action = "investigate self vs other valid copy entries in db"
+            return self.Backup.INVALID_ON_OTHER
+
+        elif any(m > 15 for m in self.match_types):
+            # copies that need checksum info to determine validity
+            # generate checksum depending on location
+            pass
+
+        elif any(m >= 10 for m in self.match_types):
+            # data is out of sync or db is not up to date
+            # could checksum again, but likely need attention from user to resolve
+            # (otherwise we may generate checksums repeatedly just to find the same result)
+            return self.Backup.POSSIBLE_UNSYNCED_COPY
+
+    @property
+    def selves(self):
+        if not hasattr(self, 'matches'):
+            return None 
+        return list(set([f for f in [self.file, *self.matches] if self.file.compare(f) in DataValidationFile.SELVES]))
+
+    @property
+    def valid_backups(self):
+        return list(set([backup for s in self.selves for backup in self.backups if s.compare(backup) in DataValidationFile.VALID_COPIES]))
+        #* note: list(set()) means these are no longer in original order
+    
+    @property
+    def unconfirmed_backups(self):
+        return list(set([backup for s in self.selves for backup in self.backups if s.compare(backup) in DataValidationFile.UNCONFIRMED_COPIES]))
+    
+    @property
+    def invalid_backups(self):
+        return list(set([backup for s in self.selves for backup in self.backups if s.compare(backup) in DataValidationFile.INVALID_COPIES]))
 
     @property
     def match_types(self) -> List[int]:
         """return a list of match types for the file"""
         return [self.file.compare(match) for match in self.matches]
-        return any(self.compare(backup) in DataValidationFile.VALID_COPIES for self,backup in zip(self.selves,self.backups))
+    
     @property
     def eval_accessible_db_matches(self) -> DataValidationFile.Match:
         """Return an enum indicating the highest status of a file's matches in the database,
@@ -2214,6 +2462,7 @@ class DataValidationStatus:
         VALID_ON_OTHER = VALID_ON_ZDRIVE = 401
         INVALID_ON_OTHER = INVALID_ON_ZDRIVE = -401
 
+        HAS_VALID_BACKUP = 400
         # ---------------------------------------------------------------------------------------
         # copies exist, more computation is needed to validate
 
@@ -2229,31 +2478,29 @@ class DataValidationStatus:
         COPY_ON_OTHER_MISSING_OTHER = COPY_ON_ZDRIVE_MISSING_OTHER = 102
         COPY_ON_OTHER_MISSING_BOTH = COPY_ON_ZDRIVE_MISSING_BOTH = 101
 
+        HAS_UNCONFIRMED_BACKUP = 300
+        
+        # ---------------------------------------------------------------------------------------
+        # possible copies with different names exist - need intervention
+
+        POSSIBLE_UNSYNCED_COPY = 100
+        
+        HAS_POSSIBLE_UNSYNCED_BACKUP = 100
+        """Only invalid backup(s) exist: data may have changed since backup, be careful!"""
+
         # ---------------------------------------------------------------------------------------
         # no copies found
-        NO_COPIES_IN_DB = 1  # ? find in filesystem
+        HAS_NO_CHECKSUMS_IN_DB = 5
+        
+        NO_BACKUPS_IN_DB = 4
+        NO_COPIES_IN_DB = 3  # ? find in filesystem
+        NO_MATCHES_IN_DB = 2
+        
+        NO_BACKUPS_IN_FILESYSTEM = 1
         NO_COPIES_IN_FILESYSTEM = 0  # ? add filesystem locations
+        
         UNKNOWN = -1
 
-    @property
-    def lims_copy_exists(self) -> Union[pathlib.Path, None, bool]:
-        """Returns path to a file's copy on LIMS, None if the file itself is on LIMS, False if no copy exists"""
-        if not self.file.lims_backup:  # only returns if it exists
-            return False
-        elif self.file.lims_backup == self.file.path:
-            return None
-        else:
-            return self.file.lims_backup
-
-    @property
-    def npexp_copy_exists(self) -> Union[pathlib.Path, None, bool]:
-        """Returns path to a file's copy on np-exp, None if the file itself is on np-exp, False if no copy exists"""
-        if not self.file.npexp_backup:  # only returns if it exists
-            return False
-        elif self.file.npexp_backup == self.file.path:
-            return None
-        else:
-            return self.file.npexp_backup
 
 
 class DataValidationFolder:

@@ -215,6 +215,12 @@ class SessionError(ValueError):
     pass
 
 
+class FilepathIsDirError(ValueError):
+    """Raised when a directory is specified but a filepath is required"""
+
+    pass
+
+
 def error(e: TypeError) -> str:
     return "".join(traceback.TracebackException.from_exception(e).format())
 
@@ -505,13 +511,13 @@ class SessionFile:
             pass
 
         if not is_file:
-            raise ValueError(
+            raise FilepathIsDirError(
                 f"{self.__class__.__name__}: path must point to a file {path}"
             )
         else:
             try:
                 self.path = path  # might be read-only, in the case of DVFiles
-            except:
+            except AttributeError:
                 pass
 
         self.name = self.path.name
@@ -805,7 +811,7 @@ class DataValidationFile(abc.ABC):
                 pass
 
             if not is_file:
-                raise ValueError(
+                raise FilepathIsDirError(
                     f"{self.__class__.__name__}: path must point to a file {path}"
                 )
 

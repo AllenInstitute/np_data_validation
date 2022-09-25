@@ -2,64 +2,64 @@
 r"""Tools for validating neuropixels data files from ecephys recording sessions.
 
     Some design notes:
-    - hash + filesize uniquely identify data, regardless of path 
-    
+    - hash + filesize uniquely identify data, regardless of path
+
     - the database holds previously-generated checksum hashes for
     large files (because they can take a long time to generate), plus their
     filesize at the time of checksum generation
-    
+
     - small text-like files can have checksums generated on the fly
     so they don't need to live in the database (but they often do)
-    
+
     for a given data file input we want to identify in the database:
         - self:
             - size[0] == size[1]
             - hash[0] == hash[1]
             - path[0] == path[1]
-    
+
         - valid backups:
             - size[0] == size[1]
             - hash[0] == hash[1]
             - path[0] != path[1]
-                
+
             - valid backups, with filename mismatch:
-                - filename[0] != filename[1]                
-            
+                - filename[0] != filename[1]
+
         - invalid backups:
-            - path[0] != path[1] 
+            - path[0] != path[1]
             - filename[0] == filename[1]
-            
+
             - invalid backups, corruption likely:
                 - size[0] == size[1]
                 - hash[0] != hash[1]
-            
-            - invalid backups, out-of-sync or incomplete transfer:       
+
+            - invalid backups, out-of-sync or incomplete transfer:
                 - size[0] != size[1]
                 - hash[0] != hash[1]
-                
+
         - other, assumed unrelated:
             - size[0] != size[1]
             - hash[0] != hash[1]
             - filename[0] != filename[1]
-            
+
     - the basic unit for making these comparsons is a 'DataValidationFile' object, which has the properties above
     - checking the equality of two DVFile objects (ie subject == other) returns an enum specifying which of the relationships
       above is true
     - three or four parameters constitute a DataValidationFile object:
         -filepath
-            -ecephys sessionID, which may be inferred from the filepath, 
+            -ecephys sessionID, which may be inferred from the filepath,
             required for organization and many other possible uses of the file
         -checksum
         -size
-    - not all of the parameters are required    
+    - not all of the parameters are required
     - a standard baseclass template exists for connecting to a database, feeding-in file objects and getting matches
     - convenience / helper functions: live in a separate module ?
 
-    
+
     Typical usage:
 
     import data_validation as dv
-    
+
     x = dv.CRC32DataValidationFile(
         path=
         R'\\allen\programs\mindscope\workgroups\np-exp\1190290940_611166_20220708\1190258206_611166_20220708_surface-image1-left.png'
@@ -67,22 +67,22 @@ r"""Tools for validating neuropixels data files from ecephys recording sessions.
     print(f'checksum is auto-generated for small files: {x.checksum}')
 
     y = dv.CRC32DataValidationFile(
-        checksum=x.checksum, 
-        size=x.size, 
+        checksum=x.checksum,
+        size=x.size,
         path='/dir/1190290940_611166_20220708_foo.png'
     )
 
     # DataValidationFile objects evaulate to True if they have some overlap between filename (regardless of path),
-    # checksum, and size: 
+    # checksum, and size:
     print(x == y)
 
     # only files that are unrelated, and have no overlap in filename, checksum, or size,
     # evaluate to False
-    
+
     # connecting to a database:
     db = dv.MongoDataValidationDB()
     db.add_file(x)
-    
+
     # to see large-file checksum performance (~400GB file)
     db.DVFile.generate_checksum('//allen/programs/mindscope/production/incoming/recording_slot3_2.npx2)
 
@@ -101,7 +101,6 @@ r"""Tools for validating neuropixels data files from ecephys recording sessions.
 from __future__ import annotations
 
 import abc
-import configparser
 import datetime
 import enum
 import functools
@@ -113,7 +112,6 @@ import logging.handlers
 import mmap
 import os
 import pathlib
-import pprint
 import random
 import re
 import shelve
@@ -131,27 +129,32 @@ try:
 except ImportError:
     print("pymongo not installed")
 
+import timing
 import data_getters as dg  # from corbett's QC repo
 import nptk  # utilities for np rigs and data
 import strategies  # for interacting with database
 
 NPEXP_PATH = pathlib.Path("//allen/programs/mindscope/workgroups/np-exp")
- 
+
 # setup logging ------------------------------------------------------------------------
 # LOG_DIR = fR"//allen/programs/mindscope/workgroups/np-exp/ben/data_validation/logs/"
 log_level = logging.DEBUG
-log_format = "%(asctime)s %(threadName)s %(message)s" #? %(relativeCreated)6d 
+log_format = "%(asctime)s %(threadName)s %(message)s"  # ? %(relativeCreated)6d
 log_datefmt = "%Y-%m-%d %H:%M"
 log_folder = pathlib.Path("./logs")
 log_folder.mkdir(parents=True, exist_ok=True)
 log_filename = "data_validation_main.log"
-log_path = (log_folder / log_filename)
+log_path = log_folder / log_filename
 
 if log_path.exists() and log_path.stat().st_size > 1 * 1024**2:
-    log_path.rename(log_path.with_stem(f"{log_path.stem}_{datetime.datetime.now().strftime('%Y-%m-%d')}"))
+    log_path.rename(
+        log_path.with_stem(
+            f"{log_path.stem}_{datetime.datetime.now().strftime('%Y-%m-%d')}"
+        )
+    )
 
 logging.basicConfig(
-    filename = str(log_path),
+    filename=str(log_path),
     level=log_level,
     format=log_format,
     datefmt=log_datefmt,
@@ -162,31 +165,35 @@ logging.basicConfig(
 #     maxBytes=10 * 1024**2,
 #     backupCount=50,
 # )
-# log.setFormatter = 
+# log.setFormatter =
 # log.addHandler(logHandler)
 
 # get mongodb ready -------------------------------------------------------------------- #
-mongo_local_client:pymongo.MongoClient = pymongo.MongoClient(
+mongo_local_client: pymongo.MongoClient = pymongo.MongoClient(
     "mongodb://10.128.50.77:27017/",
-    serverSelectionTimeoutMS = 2000, #default 30s
-    maxPoolSize = 0, # default 100
+    serverSelectionTimeoutMS=2000,  # default 30s
+    maxPoolSize=0,  # default 100
 )
 
 # backup cloud location
 mongo_cloud_uri = "mongodb+srv://cluster0.rhrmjzu.mongodb.net/?authSource=%24external&authMechanism=MONGODB-X509&retryWrites=true&w=majority"
-mongo_cloud_certificate = mgc = pathlib.Path("X509-cert-4825098053518902813.pem") # expires Sept 2024
-mgc_bkup = lambda host="localhost": pathlib.Path(f"//{host}/C$/ProgramData/MongoDB") / mgc
+mongo_cloud_certificate = mgc = pathlib.Path(
+    "X509-cert-4825098053518902813.pem"
+)  # expires Sept 2024
+mgc_bkup = (
+    lambda host="localhost": pathlib.Path(f"//{host}/C$/ProgramData/MongoDB") / mgc
+)
 ben_desktop = "W10DTMJ0AK6GM"
 if not mgc.resolve().exists() and not mgc_bkup().exists():
-    shutil.copy2(mgc_bkup(ben_desktop),mgc.parent)
-mongo_cloud_client:pymongo.MongoClient = pymongo.MongoClient(
-    host= mongo_cloud_uri,
+    shutil.copy2(mgc_bkup(ben_desktop), mgc.parent)
+mongo_cloud_client: pymongo.MongoClient = pymongo.MongoClient(
+    host=mongo_cloud_uri,
     tls=True,
     tlsCertificateKeyFile=mgc.as_posix() if mgc.exists() else mgc_bkup().as_posix(),
-    maxPoolSize = 100, # 500 max on free plan -default 100
+    maxPoolSize=100,  # 500 max on free plan -default 100
 )
 
-for client in [mongo_cloud_client]: # mongo_local_client
+for client in [mongo_cloud_client]:  # mongo_local_client
     MONGO_COLLECTION = client["prod"]["snapshots"]
     try:
         MONGO_COLLECTION.count_documents({})
@@ -317,7 +324,7 @@ def chunk_hashlib(
     return hasher.hexdigest()
 
 
-def valid_sha256_checksum(*args, value:str=None, **kwargs) -> bool:
+def valid_sha256_checksum(*args, value: str = None, **kwargs) -> bool:
     """Validate sha256/sha3_256 checksum"""
     if (
         isinstance(value, str)
@@ -350,7 +357,7 @@ def test_sha3_256_function(func, *args, **kwargs):
     ), "checksum function incorrect"
 
 
-def valid_crc32_checksum(*args,value:str=None,**kwargs) -> bool:
+def valid_crc32_checksum(*args, value: str = None, **kwargs) -> bool:
     """validate crc32 checksum"""
     if (
         isinstance(value, str)
@@ -449,12 +456,20 @@ class Session:
                 lims_dg.cursor.execute(WKF_QRY.format(lims_dg.lims_id))
                 exp_data = lims_dg.cursor.fetchall()
                 if exp_data and exp_data[0]["storage_directory"]:
-                    self._lims_path = pathlib.Path("/" + exp_data[0]["storage_directory"])
+                    self._lims_path = pathlib.Path(
+                        "/" + exp_data[0]["storage_directory"]
+                    )
                 else:
-                    logging.debug("lims checked successfully, but no folder uploaded for {}".format(self.id))
+                    logging.debug(
+                        "lims checked successfully, but no folder uploaded for {}".format(
+                            self.id
+                        )
+                    )
                     self._lims_path = None
             except Exception as e:
-                logging.info("Checking for lims folder failed for {}: {}".format(self.id, e))
+                logging.info(
+                    "Checking for lims folder failed for {}: {}".format(self.id, e)
+                )
                 self._lims_path = None
         return self._lims_path
 
@@ -680,8 +695,10 @@ class SessionFile:
             and self._z_drive_backup.exists()
             and self._z_drive_backup.as_posix() != self.path.as_posix()
             and "neuropixels_data" not in self.path.parts
-            and self.path != self.get_npexp_path() # if file is on npexp, don't consider z drive as a backup
-            and self.path != self._lims_backup # if file is on lims, don't consider z drive as a backup
+            and self.path
+            != self.get_npexp_path()  # if file is on npexp, don't consider z drive as a backup
+            and self.path
+            != self._lims_backup  # if file is on lims, don't consider z drive as a backup
         ):
             return self._z_drive_backup
         return None
@@ -699,7 +716,12 @@ class SessionFile:
             sync_path = nptk.Rig.Sync.path
         elif rig_from_path:
             rig_idx = nptk.Rig.rig_str_to_int(rig_from_path)
-            sync_path = "//" + nptk.ConfigHTTP.get_np_computers(rig_idx, "sync")[f"NP.{rig_idx}-Sync"]
+            sync_path = (
+                "//"
+                + nptk.ConfigHTTP.get_np_computers(rig_idx, "sync")[
+                    f"NP.{rig_idx}-Sync"
+                ]
+            )
         else:
             sync_path = None
         # the z drive/neuropix data folder for this rig
@@ -832,7 +854,7 @@ class DataValidationFile(abc.ABC):
         self._probe_dir = (
             probe_name if path and probe is not None else None
         )  # avoid checking 'if probe' since it could equal 0
-        
+
         # avoid checking 'if size' since it could equal 0
         if self.path and size is None:
             try:
@@ -859,7 +881,7 @@ class DataValidationFile(abc.ABC):
             checksum = self.__class__.generate_checksum(
                 self.path, self.size
             )  # change to use instance method if available
-        
+
         if checksum and not self.checksum_validate(value=checksum):
             raise ValueError(
                 f"{self.__class__.__name__}: trying to set an invalid {self.checksum_name} checksum"
@@ -914,10 +936,10 @@ class DataValidationFile(abc.ABC):
 
     def __str__(self):
         possible_session = f"{self.session.folder if (hasattr(self,'session') and self.session) else ''}"
-        possible_session = possible_session if possible_session not in self.name else ''
+        possible_session = possible_session if possible_session not in self.name else ""
         possible_probe = f"{'probe'+self.probe_dir+' ' if self.probe_dir else ''}"
         return f"{possible_session}{possible_probe}{self.name}"
-    
+
     def __lt__(self, other):
         if self.name and other.name:
             if self.name == other.name:
@@ -947,13 +969,15 @@ class DataValidationFile(abc.ABC):
 
         UNRELATED = 0
         UNKNOWN = -1
-        UNKNOWN_CHECKSUM_TYPE_MISMATCH = -2 # size, name and checksum type are different
+        UNKNOWN_CHECKSUM_TYPE_MISMATCH = (
+            -2
+        )  # size, name and checksum type are different
         CHECKSUM_COLLISION = -3  # rare case of different files with the same checksum
         SELF_PREVIOUS_VERSION = -5  # path is identical, size or checksum mismatch
-        
+
         # =======================================================================================
         # files at the same location on disk
-        
+
         SELF = 5
 
         #!
@@ -961,8 +985,10 @@ class DataValidationFile(abc.ABC):
         SELF_MISSING_OTHER = 7  # other file is missing a checksum  #? further info
         #! watch out: the two above depend on the order of objects in the inequality
 
-        SELF_CHECKSUM_TYPE_MISMATCH = 8 # size and path identical, checksum types are different
-        
+        SELF_CHECKSUM_TYPE_MISMATCH = (
+            8  # size and path identical, checksum types are different
+        )
+
         # =======================================================================================
         # the most tentative of matches - going off only the size (+ probe letters if applicable)
 
@@ -985,32 +1011,31 @@ class DataValidationFile(abc.ABC):
         COPY_MISSING_SELF = 18  # ? further info
         COPY_MISSING_OTHER = 19  # ? further info
         COPY_CHECKSUM_TYPE_MISMATCH = 20  # ? convert one to the other
-        
+
         # ---------------------------------------------------------------------------------------
         # matching data - this is generally what we want to search for to validate backups
 
         VALID_COPY = 21
         VALID_COPY_RENAMED = 22
-        
-        
-    SELVES:Tuple[Match] = (
-            Match.SELF,
-            Match.SELF_MISSING_SELF,
-            Match.SELF_MISSING_OTHER,
-            Match.SELF_CHECKSUM_TYPE_MISMATCH,
+
+    SELVES: Tuple[Match] = (
+        Match.SELF,
+        Match.SELF_MISSING_SELF,
+        Match.SELF_MISSING_OTHER,
+        Match.SELF_CHECKSUM_TYPE_MISMATCH,
     )
     """`(self.compare(other))` will be in the returned list if `self` and `other` are
     suspected to be the same file"""
-    
-    VALID_COPIES:Tuple[Match] = (
-        Match.VALID_COPY, 
+
+    VALID_COPIES: Tuple[Match] = (
+        Match.VALID_COPY,
         Match.VALID_COPY_RENAMED,
     )
     """`(self.compare(other)` will be in the returned list if `other` is a
     checksum-validated copy of `self`"""
-    
-    UNCONFIRMED_COPIES:Tuple[Match] = (
-        Match.COPY_MISSING_BOTH, 
+
+    UNCONFIRMED_COPIES: Tuple[Match] = (
+        Match.COPY_MISSING_BOTH,
         Match.COPY_MISSING_SELF,
         Match.COPY_MISSING_OTHER,
         Match.COPY_CHECKSUM_TYPE_MISMATCH,
@@ -1019,41 +1044,41 @@ class DataValidationFile(abc.ABC):
     """`(self.compare(other))` will be in the returned list if file names and sizes
         suggest `other` is a copy of `self`, and checksums do not contraindicate, but
         additional checksums need to be generated to confirm"""
-        
-    INVALID_COPIES:Tuple[Match] = (
-            Match.COPY_UNSYNCED_CHECKSUM,
-            Match.COPY_UNSYNCED_OR_CORRUPT_DATA,
-            Match.COPY_UNSYNCED_DATA,
+
+    INVALID_COPIES: Tuple[Match] = (
+        Match.COPY_UNSYNCED_CHECKSUM,
+        Match.COPY_UNSYNCED_OR_CORRUPT_DATA,
+        Match.COPY_UNSYNCED_DATA,
     )
     """`(self.compare(other))` will be in the returned list if the `other` has a checksum or
-    size that indicates an invalid copy or out-of-date information"""     
-    
-    IGNORED:Tuple[Match] = (
-            Match.UNRELATED,
-            Match.UNKNOWN,
-            Match.UNKNOWN_CHECKSUM_TYPE_MISMATCH,
-            Match.CHECKSUM_COLLISION,
-            Match.SELF_PREVIOUS_VERSION,
+    size that indicates an invalid copy or out-of-date information"""
+
+    IGNORED: Tuple[Match] = (
+        Match.UNRELATED,
+        Match.UNKNOWN,
+        Match.UNKNOWN_CHECKSUM_TYPE_MISMATCH,
+        Match.CHECKSUM_COLLISION,
+        Match.SELF_PREVIOUS_VERSION,
     )
     """`(self.compare(other))` will be in the returned list if the `other` has properties
-    that suggest it should be ignored for the purposes of validating data"""    
-    
+    that suggest it should be ignored for the purposes of validating data"""
+
     def __hash__(self):
         # this might be a bad idea: added to allow for set() operations on DVFiles to remove duplicates when getting
         # a database - but DVFiles are mutable
-        return hash(self.checksum) ^ hash(self.size) ^ hash(self.path.as_posix().lower())    
-     
+        return (
+            hash(self.checksum) ^ hash(self.size) ^ hash(self.path.as_posix().lower())
+        )
+
     def __eq__(self, other):
         return hash(self) == hash(other)
-    
+
     def compare(self, other: DataValidationFile) -> Match:
         """Test equality of two DataValidationFile objects"""
         # size and path fields are required entries in a DVF entry in database -
         # checksum is optional, so we need to check for it in both objects
         if not isinstance(other, DataValidationFile):
-            raise TypeError(
-                f"Cannot compare DataValidationFile to {type(other)}"
-            )
+            raise TypeError(f"Cannot compare DataValidationFile to {type(other)}")
         # -make use of addtl file check: depends on files existing so isn't always
         # reliable
         samefile = None
@@ -1102,7 +1127,7 @@ class DataValidationFile(abc.ABC):
             and samefile is not False
         ):  # self without checksum confirmation (other missing)
             return self.__class__.Match.SELF_MISSING_OTHER
-        
+
         elif (
             (self.size == other.size)
             and (
@@ -1116,14 +1141,13 @@ class DataValidationFile(abc.ABC):
             return self.__class__.Match.SELF_CHECKSUM_TYPE_MISMATCH
 
         elif (
-                (
-                    self.size != other.size
-                 or 
-                    ( 
+            (
+                self.size != other.size
+                or (
                     self.checksum != other.checksum
                     and self.checksum_name == other.checksum_name
-                    )
                 )
+            )
             and (self.path.as_posix().lower() == other.path.as_posix().lower())
             and samefile is not True
         ):  # and old entry for the same file path
@@ -1157,7 +1181,7 @@ class DataValidationFile(abc.ABC):
             and samefile is not True
         ):  # copy without checksum confirmation (self missing)
             return self.__class__.Match.COPY_MISSING_SELF
-        
+
         elif (
             (self.checksum and other.checksum)
             and (self.checksum_name != other.checksum_name)
@@ -1170,7 +1194,7 @@ class DataValidationFile(abc.ABC):
             return self.__class__.Match.COPY_CHECKSUM_TYPE_MISMATCH
 
         elif (
-            (  
+            (
                 (not self.checksum or not other.checksum)
                 or (self.checksum_name != other.checksum_name)
             )
@@ -1246,7 +1270,7 @@ class DataValidationFile(abc.ABC):
             and (self.size != other.size)
             and (self.name.lower() != other.name.lower())
             and samefile is not True
-        ): # possible checksum collision
+        ):  # possible checksum collision
             return self.__class__.Match.CHECKSUM_COLLISION
 
         elif (
@@ -1257,11 +1281,11 @@ class DataValidationFile(abc.ABC):
             and (self.name.lower() != other.name.lower())
             and (self.checksum_name == other.checksum_name)
             and samefile is not True
-        ): # apparently unrelated files (different name && checksum && size)
+        ):  # apparently unrelated files (different name && checksum && size)
             return self.__class__.Match.UNRELATED
 
-        else: # insufficient information
-            if self.checksum_name != other.checksum: 
+        else:  # insufficient information
+            if self.checksum_name != other.checksum:
                 return self.__class__.Match.UNKNOWN_CHECKSUM_TYPE_MISMATCH
             return self.__class__.Match.UNKNOWN
 
@@ -1324,28 +1348,36 @@ class OrphanedDVFile(DataValidationFile):
     the database for matches"""
 
     default_checksum_type = "sha3_256"
-    
-    checksum_threshold: int  = None
-    checksum_name: str = None
-    checksum_generator: Callable[
-        [str], str
-    ] = None
-    checksum_test: Callable[[Callable], None] = None
-    checksum_validate: Callable[
-        [str], bool
-    ] = None
 
-    def __init__(self, *args, type: Literal["sha3_256","sha256","crc32"] = default_checksum_type, **kwargs):
+    checksum_threshold: int = None
+    checksum_name: str = None
+    checksum_generator: Callable[[str], str] = None
+    checksum_test: Callable[[Callable], None] = None
+    checksum_validate: Callable[[str], bool] = None
+
+    def __init__(
+        self,
+        *args,
+        type: Literal["sha3_256", "sha256", "crc32"] = default_checksum_type,
+        **kwargs,
+    ):
         if type not in available_DVFiles.keys():
             raise ValueError(f"Unknown DVFile type: {type}")
         self.convert(type)
         DataValidationFile.__init__(self, *args, **kwargs)
-        
-    def convert(self, type: Literal["sha3_256","sha256","crc32"]):
+
+    def convert(self, type: Literal["sha3_256", "sha256", "crc32"]):
         """Convert class to use specific checksum type"""
-        for attr in ["checksum_threshold","checksum_name", "checksum_generator", "checksum_test", "checksum_validate"]:
+        for attr in [
+            "checksum_threshold",
+            "checksum_name",
+            "checksum_generator",
+            "checksum_test",
+            "checksum_validate",
+        ]:
             setattr(self, attr, getattr(available_DVFiles[type], attr))
         self._checksum = None
+
 
 class DataValidationDB(abc.ABC):
     """Represents a database of files with validation metadata
@@ -1482,7 +1514,7 @@ class MongoDataValidationDB(DataValidationDB):
     def add_file(
         cls,
         file: DataValidationFile = None,
-        path: Union[str,pathlib.Path] = None,
+        path: Union[str, pathlib.Path] = None,
         size: int = None,
         checksum: str = None,
     ):
@@ -1540,7 +1572,7 @@ class MongoDataValidationDB(DataValidationDB):
             upsert=True,  # add new entry if not found
             hint="unique",
         )
-        
+
         if not result.acknowledged:
             logging.info(f"Failed to add to MongoDB {file}")
             return
@@ -1550,9 +1582,7 @@ class MongoDataValidationDB(DataValidationDB):
             )
             return
         if result.upserted_id:
-            logging.debug(
-                f"Added {file} to MongoDB with {file.checksum_name} checksum"
-            )
+            logging.debug(f"Added {file} to MongoDB with {file.checksum_name} checksum")
         elif result.modified_count:
             logging.debug(
                 f"Updated {file} in MongoDB with {file.checksum_name} checksum"
@@ -1562,7 +1592,7 @@ class MongoDataValidationDB(DataValidationDB):
     def get_matches(
         cls,
         file: DataValidationFile = None,
-        path: Union[str,pathlib.Path] = None,
+        path: Union[str, pathlib.Path] = None,
         size: int = None,
         checksum: str = None,
         match: Union[int, enum.IntEnum] = None,
@@ -1578,7 +1608,9 @@ class MongoDataValidationDB(DataValidationDB):
           transfer ladder to lims; files without a sessionID are on the bottom rung
         """
         if not file or not isinstance(file, DataValidationFile):
-            if isinstance(file, (str,pathlib.Path)):  # path provided as positional argument
+            if isinstance(
+                file, (str, pathlib.Path)
+            ):  # path provided as positional argument
                 path = file
             try:
                 # make a new object with the default DVFile class
@@ -1604,19 +1636,14 @@ class MongoDataValidationDB(DataValidationDB):
             # perform a quick filter on the list before converting to DVFiles,
             # skip path, which may be normalized by DVFile constructor
             if match and all(
-                m
-                in DataValidationFile.SELVES
-                for m in match
+                m in DataValidationFile.SELVES for m in match
             ):  # we'll never want to search for self_missing_other in db, but included here just in case it's in match
                 entries = [
                     e
                     for e in entries
                     if (e["size"] == file.size or e["checksum"] == file.checksum)  # *
                 ]
-            elif match and all(
-                m in DataValidationFile.VALID_COPIES
-                for m in match
-            ):
+            elif match and all(m in DataValidationFile.VALID_COPIES for m in match):
                 entries = [
                     e
                     for e in entries
@@ -1646,7 +1673,7 @@ class MongoDataValidationDB(DataValidationDB):
                     ),
                 )
             # TODO consolidate path+checksum query into one that finds either, then
-            # if none returned find size matches separately 
+            # if none returned find size matches separately
             if file.size:
                 entries += list(
                     cls.db.find(
@@ -1667,7 +1694,7 @@ class MongoDataValidationDB(DataValidationDB):
                 available_DVFiles[entry["type"]](
                     path=entry["path"],
                     checksum=entry["checksum"],
-                    size=entry.get("size",None), # size not required, may be missing
+                    size=entry.get("size", None),  # size not required, may be missing
                     # hostname=entry.get("hostname",None), # hostname may be missing from older entries
                 )
                 for entry in entries
@@ -1680,7 +1707,7 @@ class MongoDataValidationDB(DataValidationDB):
                     type=entry["type"],
                     path=entry["path"],
                     checksum=entry["checksum"],
-                    size=entry.get("size",None), # size not required, may be missing
+                    size=entry.get("size", None),  # size not required, may be missing
                     # hostname=entry.get("hostname",None), # hostname may be missing from older entries
                 )
                 for entry in entries
@@ -1697,7 +1724,9 @@ class MongoDataValidationDB(DataValidationDB):
             return []
 
         if not match:
-            return [o for o in matches if file.compare(o) not in DataValidationFile.IGNORED]
+            return [
+                o for o in matches if file.compare(o) not in DataValidationFile.IGNORED
+            ]
 
         filtered_matches = []
         for m in match:
@@ -1707,17 +1736,17 @@ class MongoDataValidationDB(DataValidationDB):
 
 class CRC32JsonDataValidationDB(DataValidationDB):
     """ Represents a database of files with validation metadata in JSON format
-    
+
     This is a subclass of DataValidationDB that stores the data in a JSON
     file.
-    
+
     The JSON file is a dictionary of dictionaries, with the following keys:
-        - dir_name/filename.extension: 
+        - dir_name/filename.extension:
                 - windows: the path to the file with \\
                 - posix: the path to the file with /
                 - size: the size of the file in bytes
                 - crc32: the checksum of the file
-    
+
     """
 
     DVFile = CRC32DataValidationFile
@@ -1913,16 +1942,17 @@ class CRC32JsonDataValidationDB(DataValidationDB):
                     or (f.session_folder == session_folder and f.size == size)
                 ]
 
+
 class LimsDVDatabase(DataValidationDB):
     """Database interface for retrieving checksums generated when files enter lims"""
-    
+
     DVFile = CRC32DataValidationFile
-    
+
     @classmethod
-    def add_file(cls,*args,**kwargs): 
+    def add_file(cls, *args, **kwargs):
         """Not implemented: information is read-only"""
         pass
-    
+
     @classmethod
     def get_matches(
         cls,
@@ -1934,14 +1964,16 @@ class LimsDVDatabase(DataValidationDB):
         if isinstance(file, DataValidationFile):
             path = file.path
         return [cls.get_file_with_hash_from_lims(path)]
-    
+
     @staticmethod
-    def hash_type_from_ecephys_upload_input_json(json_path: Union[str, pathlib.Path]) -> str:
+    def hash_type_from_ecephys_upload_input_json(
+        json_path: Union[str, pathlib.Path]
+    ) -> str:
         """Read LIMS ECEPHYS_UPLOAD_QUEUE _input.json and return the hashlib class."""
         with open(json_path) as f:
             hasher_key = json.load(f).get("hasher_key", None)
         return hasher_key
-    
+
     @staticmethod
     def lims_list_to_hexdigest(lims_hash: List[int]) -> str:
         lims_list_bytes = b""
@@ -1965,7 +1997,9 @@ class LimsDVDatabase(DataValidationDB):
 
         json_path = pathlib.Path(json_path)
         if not hasher_key in lims_available_hashers.keys():
-            raise ValueError(f"hash_cls must be one of {list(lims_available_hashers.keys())}")
+            raise ValueError(
+                f"hash_cls must be one of {list(lims_available_hashers.keys())}"
+            )
 
         if not json_path.exists():
             raise FileNotFoundError("path does not exist")
@@ -1979,34 +2013,42 @@ class LimsDVDatabase(DataValidationDB):
         file_hash = {}
         for file in data["files"]:
             file_hash.update(
-                {file["destination"]: __class__.lims_list_to_hexdigest(file["destination_hash"])}
+                {
+                    file["destination"]: __class__.lims_list_to_hexdigest(
+                        file["destination_hash"]
+                    )
+                }
             )
         return file_hash
 
     @staticmethod
-    def upload_jsons_from_ecephys_session_or_file(session_or_file: Union[int, str, pathlib.Path, SessionFile]) -> List[Tuple]:
+    def upload_jsons_from_ecephys_session_or_file(
+        session_or_file: Union[int, str, pathlib.Path, SessionFile]
+    ) -> List[Tuple]:
         """Returns a list of tuples of (input_json, output_json) for any given session file
         or session id."""
-        if isinstance(session_or_file,(str,pathlib.Path)):
+        if isinstance(session_or_file, (str, pathlib.Path)):
             try:
                 lims_dir = Session(session_or_file).lims_path
             except:
                 return None
         else:
-            if isinstance(session_or_file,(SessionFile)):
-                lims_dir = session_or_file.session.lims_path 
-            elif isinstance(session_or_file,int):
+            if isinstance(session_or_file, (SessionFile)):
+                lims_dir = session_or_file.session.lims_path
+            elif isinstance(session_or_file, int):
                 lims_dir = Session(path=f"{session_or_file}_366122_20220618").lims_path
             else:
-                raise ValueError("session_or_file must be a sessionID or session folder string, or a SessionFile")
+                raise ValueError(
+                    "session_or_file must be a sessionID or session folder string, or a SessionFile"
+                )
         if not lims_dir:
             return None
-        
+
         input_and_output_jsons = []
         for upload_input_json in itertools.chain(
             lims_dir.rglob("*_UPLOAD_QUEUE_*_input.json"),
             lims_dir.rglob("*EUR_QUEUE_*_input.json"),
-            ):
+        ):
             # get corresponding output json
             matching_output_jsons = upload_input_json.parent.rglob(
                 "*" + upload_input_json.name.replace("input", "output")
@@ -2023,85 +2065,107 @@ class LimsDVDatabase(DataValidationDB):
                 )
                 # use the most recent:
                 upload_output_json.sort(key=lambda p: str(p), reverse=True)
-            
+
             upload_output_json = upload_output_json[0]
             logging.debug(f"Using output json file: {upload_output_json}")
 
             input_and_output_jsons.append((upload_input_json, upload_output_json))
-        
+
         return input_and_output_jsons
-            
+
     @staticmethod
-    def file_factory_from_ecephys_session(session_or_file: Union[int, str, pathlib.Path, DataValidationFile], return_as_dict=False) -> Union[Dict[str,Dict[str,str]],List[DataValidationFile],]:
+    def file_factory_from_ecephys_session(
+        session_or_file: Union[int, str, pathlib.Path, DataValidationFile],
+        return_as_dict=False,
+    ) -> Union[Dict[str, Dict[str, str]], List[DataValidationFile],]:
         """Return a list of DVFiles with checksums for an ecephys session on lims.
-        
+
         Provide path to ecephys_session_ dir or any file within it and we'll extract out
         the session dir.
-        
+
         #! Current understanding is that files can't be overwritten on lims
         so although a file may have been uploaded multiple times (appearing in multiple
         upload queue files with multiple hashes), the path in lims will always be unique (ie
         the same file can live in multiple subfolders) - so we should be able to aggregate
         all filepaths across all upload queue files and get a unique set of files (with some
         possible overlap in data/checksums).
-        
+
         """
 
-        input_and_output_jsons = __class__.upload_jsons_from_ecephys_session_or_file(session_or_file)
+        input_and_output_jsons = __class__.upload_jsons_from_ecephys_session_or_file(
+            session_or_file
+        )
         if not input_and_output_jsons:
             return
-        
+
         all_hashes = {}
         for upload_input_json, upload_output_json in input_and_output_jsons:
             # get hash function that was used by lims
-            hasher_key = __class__.hash_type_from_ecephys_upload_input_json(upload_input_json)
+            hasher_key = __class__.hash_type_from_ecephys_upload_input_json(
+                upload_input_json
+            )
             # get hashes from output json
-            hashes = __class__.hashes_from_ecephys_upload_output_json(upload_output_json, hasher_key)
-            
+            hashes = __class__.hashes_from_ecephys_upload_output_json(
+                upload_output_json, hasher_key
+            )
+
             for file in hashes.keys():
-                if all_hashes.get(file,None):
-                    pass # print(f"{file} already in all_hashes")
-                all_hashes.update({file:{hasher_key:hashes[file]}})
-            
+                if all_hashes.get(file, None):
+                    pass  # print(f"{file} already in all_hashes")
+                all_hashes.update({file: {hasher_key: hashes[file]}})
+
         if return_as_dict:
             return all_hashes
 
         # this is slow-ish and only makes sense if we need DVFiles for all objects in a
         # session - otherwise just use the dict
-        DVFiles = [] 
-        for file,hashes in all_hashes.items():
-            for hasher_key,hash_hexdigest in hashes.items():
-                DVFiles.append(available_DVFiles[hasher_key](path=file,checksum=hash_hexdigest))
+        DVFiles = []
+        for file, hashes in all_hashes.items():
+            for hasher_key, hash_hexdigest in hashes.items():
+                DVFiles.append(
+                    available_DVFiles[hasher_key](path=file, checksum=hash_hexdigest)
+                )
         return DVFiles
 
     @staticmethod
-    def get_file_with_hash_from_lims(file: Union[str,pathlib.Path,SessionFile]) -> DataValidationFile:
+    def get_file_with_hash_from_lims(
+        file: Union[str, pathlib.Path, SessionFile]
+    ) -> DataValidationFile:
         """Return the hash of a file in LIMS, or None if it doesn't exist."""
-        if not isinstance(file,SessionFile):
+        if not isinstance(file, SessionFile):
             try:
                 file = SessionFile(path=file)
             except SessionError:
                 return None
-            
+
         if not file.lims_backup:
             return None
-        
+
         lims_file = file.lims_backup
-        all_hashes = __class__.file_factory_from_ecephys_session(lims_file,return_as_dict=True)
+        all_hashes = __class__.file_factory_from_ecephys_session(
+            lims_file, return_as_dict=True
+        )
         if not all_hashes:
             return None
         DVFiles = []
-        for lims_file,hashes in all_hashes.items():
-            if lims_file == file.lims_backup.as_posix() or lims_file == file.lims_backup.as_posix()[1:]:
-                for hasher_key,hash_hexdigest in hashes.items():
-                    DVFiles.append(available_DVFiles[hasher_key](path=lims_file,checksum=hash_hexdigest))    
+        for lims_file, hashes in all_hashes.items():
+            if (
+                lims_file == file.lims_backup.as_posix()
+                or lims_file == file.lims_backup.as_posix()[1:]
+            ):
+                for hasher_key, hash_hexdigest in hashes.items():
+                    DVFiles.append(
+                        available_DVFiles[hasher_key](
+                            path=lims_file, checksum=hash_hexdigest
+                        )
+                    )
         if len(DVFiles) == 1:
             return DVFiles[0]
         elif len(DVFiles) > 1:
             # multiple checksums found - return first (which should be sha3_256 and is more common)
             return DVFiles[0]
         return None
-        
+
 
 class DataValidationStatus:
     """Provides a shorthand (enum) that represents the position of a file along the road to LIMS and the existence of
@@ -2126,14 +2190,16 @@ class DataValidationStatus:
     def __init__(
         self,
         file: DataValidationFile = None,
-        path: Union[str,pathlib.Path] = None,
+        path: Union[str, pathlib.Path] = None,
         checksum: str = None,
         size: int = None,
     ):
-        if isinstance(file,DataValidationFile):
+        if isinstance(file, DataValidationFile):
             self.file = file
         if not file or not isinstance(file, DataValidationFile):
-            if isinstance(file, (str,pathlib.Path)):  # path provided as positional argument
+            if isinstance(
+                file, (str, pathlib.Path)
+            ):  # path provided as positional argument
                 path = file
             try:
                 # make a new object with the default DVFile class
@@ -2141,49 +2207,62 @@ class DataValidationStatus:
             except SessionError:
                 # create non-SessionFile DVFile object, use custom get_matches method
                 self.file = OrphanedDVFile(path=path, size=size, checksum=checksum)
-        
-        # get matches from database that have a checksum 
-        self.matches = self.db.get_matches(self.file) # for SessionFiles this only returns other files with session_id in path
-        
+
+        # get matches from database that have a checksum
+        self.matches = self.db.get_matches(
+            self.file
+        )  # for SessionFiles this only returns other files with session_id in path
+
         self.backups: List[DataValidationFile] = []
-        highest_backups: List[DataValidationFile] = [] # if no checksummed backups in db, go checksum this file
+        highest_backups: List[
+            DataValidationFile
+        ] = []  # if no checksummed backups in db, go checksum this file
         if isinstance(self.file, SessionFile):
-            # create DVfiles for any backup files currently available - 
+            # create DVfiles for any backup files currently available -
             # we'll descend the backup hierarchy and check against matches from the db
-            for attr in ['lims_backup', 'npexp_backup', 'z_drive_backup']:
+            for attr in ["lims_backup", "npexp_backup", "z_drive_backup"]:
                 backup_path = getattr(self.file, attr)
                 if not backup_path:
                     continue
-                
+
                 # make a new object with the default DVFile class
                 backup_file = self.db.DVFile(path=backup_path)
                 # - these must be SessionFiles, since standard _backup paths are
                 # constructed from session_id
-                
-                if attr == 'lims_backup' and not [b for b in self.matches if backup_file.compare(b) in b.SELVES]:
+
+                if attr == "lims_backup" and not [
+                    b for b in self.matches if backup_file.compare(b) in b.SELVES
+                ]:
                     # grab the lims hash recorded when uploaded to lims
                     lims_file = LimsDVDatabase.get_matches(self.file) or None
                     if lims_file:
                         self.db.add_file(lims_file)
-                        self.matches.extend(lims_file) 
-                
-                if attr == 'npexp_backup' and self.file.path == self.file.get_npexp_path():
+                        self.matches.extend(lims_file)
+
+                if (
+                    attr == "npexp_backup"
+                    and self.file.path == self.file.get_npexp_path()
+                ):
                     # no point checking for npexp or z drive backups if the file is in
                     # its correct session folder on npexp already
                     break
-                
+
                 # get checksummed matches for backup file
-                backup_from_matches = [b for b in self.matches if backup_file.compare(b) in b.SELVES]
+                backup_from_matches = [
+                    b for b in self.matches if backup_file.compare(b) in b.SELVES
+                ]
                 if backup_from_matches and not highest_backups:
-                    highest_backups.extend(backup_from_matches) 
+                    highest_backups.extend(backup_from_matches)
                 elif not highest_backups:
-                    highest_backups.append(backup_file) # store the path in case we need to checksum it 
-                    
+                    highest_backups.append(
+                        backup_file
+                    )  # store the path in case we need to checksum it
+
                 self.backups.extend(backup_from_matches)
                 # if self.backups:
-                #     break 
+                #     break
                 # TODO we found a backup, and could stop looking
-                # TODO but if we don't have a checksum (or have the wrong type) 
+                # TODO but if we don't have a checksum (or have the wrong type)
                 # this won't count as a 'valid' backup
                 # either collect all backups and accept any valid, or collect the
                 # highest and either checksum it or out subject
@@ -2192,111 +2271,163 @@ class DataValidationStatus:
         elif isinstance(self.file, OrphanedDVFile):
             # non-session files may have backups on np-exp or lims too, but we'll only
             # find out about them via the db
-            # 
+            #
             # for each of our file's matches, provided it's a sessionfile we can see if its path is
             # the expected np-exp/lims/z-drive path for a backup
-            s_m = session_matches = [sf for sf in self.matches if isinstance(sf, SessionFile)]
+            s_m = session_matches = [
+                sf for sf in self.matches if isinstance(sf, SessionFile)
+            ]
             # while session_matches:
             #     backups = []
             # note: we can't use the properties .lims_backup , .npexp_back etc
             # because they return none if .path == .X_backup to prevent a file being detected as its own backup
-            backup_from_matches = [b for b in s_m if b.path == b._lims_backup and self.file.compare(b) in b.VALID_COPIES]
+            backup_from_matches = [
+                b
+                for b in s_m
+                if b.path == b._lims_backup and self.file.compare(b) in b.VALID_COPIES
+            ]
             if not backup_from_matches:
-                backup_from_matches = [b for b in s_m if b.path == b._lims_backup and self.file.compare(b) in b.UNCONFIRMED_COPIES]
+                backup_from_matches = [
+                    b
+                    for b in s_m
+                    if b.path == b._lims_backup
+                    and self.file.compare(b) in b.UNCONFIRMED_COPIES
+                ]
             # get checksummed matches for backup file
             if backup_from_matches and not highest_backups:
-                highest_backups.extend(backup_from_matches) 
+                highest_backups.extend(backup_from_matches)
             self.backups.extend(backup_from_matches)
-                
+
             # if backups and any(b.path.exists() for b in backups):
             #     break
             # if backups:
             #     highest_backups = backups
-            backup_from_matches = [b for b in s_m if b.path == b.get_npexp_path() and self.file.compare(b) in b.VALID_COPIES]
+            backup_from_matches = [
+                b
+                for b in s_m
+                if b.path == b.get_npexp_path()
+                and self.file.compare(b) in b.VALID_COPIES
+            ]
             if not backup_from_matches:
-                backup_from_matches = [b for b in s_m if b.path == b.get_npexp_path() and self.file.compare(b) in b.UNCONFIRMED_COPIES]
+                backup_from_matches = [
+                    b
+                    for b in s_m
+                    if b.path == b.get_npexp_path()
+                    and self.file.compare(b) in b.UNCONFIRMED_COPIES
+                ]
             # get checksummed matches for backup file
             if backup_from_matches and not highest_backups:
-                highest_backups.extend(backup_from_matches) 
+                highest_backups.extend(backup_from_matches)
             self.backups.extend(backup_from_matches)
-                
-            backup_from_matches = [b for b in s_m if (b.path == b._z_drive_backup or 'neuropixels_data' in str(b.path)) and self.file.compare(b) in b.VALID_COPIES]
+
+            backup_from_matches = [
+                b
+                for b in s_m
+                if (b.path == b._z_drive_backup or "neuropixels_data" in str(b.path))
+                and self.file.compare(b) in b.VALID_COPIES
+            ]
             if not backup_from_matches:
-                backup_from_matches = [b for b in s_m if (b.path == b._z_drive_backup or 'neuropixels_data' in str(b.path)) and self.file.compare(b) in b.UNCONFIRMED_COPIES]
+                backup_from_matches = [
+                    b
+                    for b in s_m
+                    if (
+                        b.path == b._z_drive_backup or "neuropixels_data" in str(b.path)
+                    )
+                    and self.file.compare(b) in b.UNCONFIRMED_COPIES
+                ]
             # get checksummed matches for backup file
             if backup_from_matches and not highest_backups:
-                highest_backups.extend(backup_from_matches) 
+                highest_backups.extend(backup_from_matches)
             self.backups.extend(backup_from_matches)
-                    
-            
+
         for backups in [self.backups, highest_backups]:
             if not backups:
                 continue
-        # we're getting loose with the discovery of z_drive_backups here so do a
-        # quick check that our 'subject' file is not the same as the candidate backup
-        # if backups and any(b.path.exists() for b in backups):
-            backups = [b for b in backups if not any(s.compare(b) in DataValidationFile.SELVES for s in self.selves)]
-            backups = [b for b in backups if b.path.exists()] # filter for extant files
-        
+            # we're getting loose with the discovery of z_drive_backups here so do a
+            # quick check that our 'subject' file is not the same as the candidate backup
+            # if backups and any(b.path.exists() for b in backups):
+            backups = [
+                b
+                for b in backups
+                if not any(
+                    s.compare(b) in DataValidationFile.SELVES for s in self.selves
+                )
+            ]
+            backups = [b for b in backups if b.path.exists()]  # filter for extant files
+
         if not self.backups and highest_backups:
             # no backups with checksums found, but we can checksum the 'best' backup found
             self.backups = highest_backups
-        
+
     def action(self):
         if not self.valid_backups or not self.unconfirmed_backups:
-            #* note: it's possible to have the same entry in valid_backups and
+            # * note: it's possible to have the same entry in valid_backups and
             #  unconfirmed_backups
             #  since we evaluate all entries in self.selves vs all entries in
             #  self.backups, if any of the entries in self.selves don't have a checksum
             #  we will end up with some unconfirmed_backups regardless
-            return 
-        
+            return
+
         if self.unconfirmed_backups and not self.valid_backups:
-            
-            pref_backup = self.unconfirmed_backups[0] # should be the highest (lims>npexp>z_drive)
-            
+
+            pref_backup = self.unconfirmed_backups[
+                0
+            ]  # should be the highest (lims>npexp>z_drive)
+
             if pref_backup.checksum and not any(s.checksum for s in self.selves):
                 # our file needs a checksum, and we have a backup with a checksum
                 # - convert our file to backup type and generate
                 new = pref_backup.__class__(self.file.path)
-                self.file = strategies.generate_checksum(new,self.db)
+                self.file = strategies.generate_checksum(new, self.db)
 
             if not pref_backup.checksum and any(s.checksum for s in self.selves):
                 # our backup needs a checksum, and we have a file with a checksum
                 # - convert backup to our type and generate
                 # - prefer speed with CRC32 vs SHA256:
-                if any(isinstance(s,CRC32DataValidationFile) and s.checksum for s in self.selves):
+                if any(
+                    isinstance(s, CRC32DataValidationFile) and s.checksum
+                    for s in self.selves
+                ):
                     new = CRC32DataValidationFile(pref_backup.path)
-                elif any(isinstance(s,SHA3_256DataValidationFile) and s.checksum for s in self.selves):
+                elif any(
+                    isinstance(s, SHA3_256DataValidationFile) and s.checksum
+                    for s in self.selves
+                ):
                     new = SHA3_256DataValidationFile(pref_backup.path)
                 else:
-                    new = [s for s in self.selves if s.checksum][0].__class__(pref_backup.path)                   
-                pref_backup = strategies.generate_checksum(new,self.db)
+                    new = [s for s in self.selves if s.checksum][0].__class__(
+                        pref_backup.path
+                    )
+                pref_backup = strategies.generate_checksum(new, self.db)
                 self.matches.append(pref_backup)
-                
+
             if not pref_backup.checksum and not any(s.checksum for s in self.selves):
                 # we have no checksums
                 # - prefer speed with CRC32 vs SHA256:
                 new = CRC32DataValidationFile(self.file.path)
-                self.file = strategies.generate_checksum(new,self.db)
-                
+                self.file = strategies.generate_checksum(new, self.db)
+
                 new = CRC32DataValidationFile(pref_backup.path)
-                pref_backup = strategies.generate_checksum(new,self.db)
+                pref_backup = strategies.generate_checksum(new, self.db)
                 self.matches.append(pref_backup)
-        
+
         if self.valid_backups:
             pass
-        
+
     def report(self):
         if not self.matches:
             return self.Backup.NO_MATCHES_IN_DB
-        elif not any(s.compare(m) in (*s.VALID_COPIES, *s.UNCONFIRMED_COPIES) for s in self.selves for m in self.matches):
+        elif not any(
+            s.compare(m) in (*s.VALID_COPIES, *s.UNCONFIRMED_COPIES)
+            for s in self.selves
+            for m in self.matches
+        ):
             return self.Backup.NO_COPIES_IN_DB
         elif not self.backups:
             return self.Backup.NO_BACKUPS_IN_FILESYSTEM
         elif not any(s.checksum for s in self.selves):
             return self.Backup.HAS_NO_CHECKSUMS_IN_DB
-        
+
         if self.valid_backups:
             # print('valid backup(s) exist: safe to delete')
             return self.Backup.HAS_VALID_BACKUP
@@ -2307,9 +2438,9 @@ class DataValidationStatus:
             # print('only invalid backup(s) exist: data may have changed since backup, be careful!')
             return self.Backup.HAS_POSSIBLE_UNSYNCED_BACKUP
         return self.Backup.UNKNOWN
-    
+
         print(
-            "="*50,
+            "=" * 50,
             "\nFile\n",
             self.file,
             "\nEvaluation of matches in database:\n",
@@ -2319,15 +2450,16 @@ class DataValidationStatus:
             "n/a\n",
         )
 
-        if self.evaluate_backups_in_db()< self.Backup.VALID_ON_NPEXP:
+        if self.evaluate_backups_in_db() < self.Backup.VALID_ON_NPEXP:
             for match in [m for m in self.matches if self.file.compare(m) >= 10]:
                 print(
-                    "-"*40,"\n",
+                    "-" * 40,
+                    "\n",
                     self.file.Match(self.file.compare(match)).name,
                     "\n",
                     match,
                 )
-        print("="*50)
+        print("=" * 50)
 
     def evaluate_backups_in_db(self):
 
@@ -2374,28 +2506,63 @@ class DataValidationStatus:
 
     @property
     def selves(self):
-        if not hasattr(self, 'matches'):
-            return None 
-        return list(set([f for f in [self.file, *self.matches] if self.file.compare(f) in DataValidationFile.SELVES]))
+        if not hasattr(self, "matches"):
+            return None
+        return list(
+            set(
+                [
+                    f
+                    for f in [self.file, *self.matches]
+                    if self.file.compare(f) in DataValidationFile.SELVES
+                ]
+            )
+        )
 
     @property
     def valid_backups(self):
-        return list(set([backup for s in self.selves for backup in self.backups if s.compare(backup) in DataValidationFile.VALID_COPIES]))
-        #* note: list(set()) means these are no longer in original order
-    
+        return list(
+            set(
+                [
+                    backup
+                    for s in self.selves
+                    for backup in self.backups
+                    if s.compare(backup) in DataValidationFile.VALID_COPIES
+                ]
+            )
+        )
+        # * note: list(set()) means these are no longer in original order
+
     @property
     def unconfirmed_backups(self):
-        return list(set([backup for s in self.selves for backup in self.backups if s.compare(backup) in DataValidationFile.UNCONFIRMED_COPIES]))
-    
+        return list(
+            set(
+                [
+                    backup
+                    for s in self.selves
+                    for backup in self.backups
+                    if s.compare(backup) in DataValidationFile.UNCONFIRMED_COPIES
+                ]
+            )
+        )
+
     @property
     def invalid_backups(self):
-        return list(set([backup for s in self.selves for backup in self.backups if s.compare(backup) in DataValidationFile.INVALID_COPIES]))
+        return list(
+            set(
+                [
+                    backup
+                    for s in self.selves
+                    for backup in self.backups
+                    if s.compare(backup) in DataValidationFile.INVALID_COPIES
+                ]
+            )
+        )
 
     @property
     def match_types(self) -> List[int]:
         """return a list of match types for the file"""
         return [self.file.compare(match) for match in self.matches]
-    
+
     @property
     def eval_accessible_db_matches(self) -> DataValidationFile.Match:
         """Return an enum indicating the highest status of a file's matches in the database,
@@ -2505,28 +2672,27 @@ class DataValidationStatus:
         COPY_ON_OTHER_MISSING_BOTH = COPY_ON_ZDRIVE_MISSING_BOTH = 101
 
         HAS_UNCONFIRMED_BACKUP = 300
-        
+
         # ---------------------------------------------------------------------------------------
         # possible copies with different names exist - need intervention
 
         POSSIBLE_UNSYNCED_COPY = 100
-        
+
         HAS_POSSIBLE_UNSYNCED_BACKUP = 100
         """Only invalid backup(s) exist: data may have changed since backup, be careful!"""
 
         # ---------------------------------------------------------------------------------------
         # no copies found
         HAS_NO_CHECKSUMS_IN_DB = 5
-        
+
         NO_BACKUPS_IN_DB = 4
         NO_COPIES_IN_DB = 3  # ? find in filesystem
         NO_MATCHES_IN_DB = 2
-        
+
         NO_BACKUPS_IN_FILESYSTEM = 1
         NO_COPIES_IN_FILESYSTEM = 0  # ? add filesystem locations
-        
-        UNKNOWN = -1
 
+        UNKNOWN = -1
 
 
 class DataValidationFolder:
@@ -2776,6 +2942,7 @@ def test_data_validation_file():
     class Test(DataValidationFile):
         def valid(path, *args, **kwargs):
             return True
+
         checksum_generator = "12345678"
         checksum_test = None
         checksum_validate = valid
@@ -2824,7 +2991,9 @@ def test_data_validation_file():
     ) == self.Match.CHECKSUM_COLLISION, "not recognized: checksum collision"
 
     other = cls(path="//tmp/tmp/test2.txt", checksum="87654321", size=20)
-    assert (self.compare(other)) == self.Match.UNRELATED, "not recognized: unrelated file"
+    assert (
+        self.compare(other)
+    ) == self.Match.UNRELATED, "not recognized: unrelated file"
 
 
 test_data_validation_file()
@@ -2911,12 +3080,23 @@ def DVFolders_from_dirs(
                 else:
                     yield DataValidationFolder(c.as_posix())
 
+
 # including names from allensdk/brain_observatory/ecephys/copy_utility/_schemas.py:
 available_DVFiles = {
-    "sha3_256": SHA3_256DataValidationFile, 
+    "sha3_256": SHA3_256DataValidationFile,
     "sha256": SHA256DataValidationFile,
     "crc32": CRC32DataValidationFile,
-    }
+}
 # from allensdk/brain_observatory/ecephys/copy_utility/_schemas.py:
 lims_available_hashers = {"sha3_256": hashlib.sha3_256, "sha256": hashlib.sha256}
 
+if __name__ == "__main__":
+    f = R"C:\Users\ben.hardcastle\Desktop\New folder (2)\1181283346_625555_20220601\1181283346_625555_20220601.ISIregistration.npz"
+    f = R"\\allen\programs\mindscope\workgroups\np-exp\1182865981_625545_20220608\1182865981_625545_20220608.stim.pkl"
+    f = R"\\allen\programs\mindscope\workgroups\np-exp\1182865981_625545_20220608\1182865981_625545_20220608_surgeryNotes.json"
+    file = SHA256DataValidationFile(f)
+    # f = R"C:\Users\ben.hardcastle\Desktop\New folder (2)\temp_delete_me.ISIregistration.npz"
+    # file = OrphanedDVFile(f)
+    # file = strategies.exchange_if_checksum_in_db(file,MongoDataValidationDB)
+    s = DataValidationStatus(file)
+    s.report()

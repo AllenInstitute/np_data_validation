@@ -1378,6 +1378,11 @@ class OrphanedDVFile(DataValidationFile):
             setattr(self, attr, getattr(available_DVFiles[type], attr))
         self._checksum = None
 
+    def generate_checksum(self, path, size=None) -> str:
+        """Overloaded classmethod, since this class has no default generator function"""
+        self.checksum_test(self.checksum_generator)
+        return self.checksum_generator(path, size=size)
+
 
 class DataValidationDB(abc.ABC):
     """Represents a database of files with validation metadata

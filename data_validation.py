@@ -2701,8 +2701,8 @@ class DataValidationStatus:
 
     @property
     def selves(self):
-        if not hasattr(self, "matches"):
-            return None
+        if not hasattr(self, "matches") or not self.matches:
+            return []
         return list(
             set(
                 [

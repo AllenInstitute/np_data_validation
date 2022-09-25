@@ -438,23 +438,25 @@ class Session:
         """get lims id from path/str and lookup the corresponding directory in lims"""
         if not (self.folder or self.id):
             return None
-
-        try:
-            lims_dg = dg.lims_data_getter(self.id)
-            WKF_QRY = """
-                        SELECT es.storage_directory
-                        FROM ecephys_sessions es
-                        WHERE es.id = {}
-                        """
-            lims_dg.cursor.execute(WKF_QRY.format(lims_dg.lims_id))
-            exp_data = lims_dg.cursor.fetchall()
-            if exp_data and exp_data[0]["storage_directory"]:
-                return pathlib.Path("/" + exp_data[0]["storage_directory"])
-            else:
-                return None
-
-        except:
-            return None
+        if not hasattr(self, "_lims_path"):
+            try:
+                lims_dg = dg.lims_data_getter(self.id)
+                WKF_QRY = """
+                            SELECT es.storage_directory
+                            FROM ecephys_sessions es
+                            WHERE es.id = {}
+                            """
+                lims_dg.cursor.execute(WKF_QRY.format(lims_dg.lims_id))
+                exp_data = lims_dg.cursor.fetchall()
+                if exp_data and exp_data[0]["storage_directory"]:
+                    self._lims_path = pathlib.Path("/" + exp_data[0]["storage_directory"])
+                else:
+                    logging.debug("lims checked successfully, but no folder uploaded for {}".format(self.id))
+                    self._lims_path = None
+            except Exception as e:
+                logging.info("Checking for lims folder failed for {}: {}".format(self.id, e))
+                self._lims_path = None
+        return self._lims_path
 
 
 class SessionFile:

@@ -136,18 +136,31 @@ import nptk  # utilities for np rigs and data
 import strategies  # for interacting with database
 
 # LOG_DIR = fR"//allen/programs/mindscope/workgroups/np-exp/ben/data_validation/logs/"
-log = logging.getLogger()
-pathlib.Path("./logs").mkdir(parents=True, exist_ok=True)
-logHandler = logging.handlers.RotatingFileHandler(
-    "./logs/clear_dirs.log",
-    maxBytes=10 * 1024**2,
-    backupCount=50,
+log_level = logging.DEBUG
+log_format = "%(asctime)s %(threadName)s %(message)s" #? %(relativeCreated)6d 
+log_datefmt = "%Y-%m-%d %H:%M"
+log_folder = pathlib.Path("./logs")
+log_folder.mkdir(parents=True, exist_ok=True)
+log_filename = "data_validation_main.log"
+log_path = (log_folder / log_filename)
+
+if log_path.exists() and log_path.stat().st_size > 1 * 1024**2:
+    log_path.rename(log_path.with_stem(f"{log_path.stem}_{datetime.datetime.now().strftime('%Y-%m-%d')}"))
+
+logging.basicConfig(
+    filename = str(log_path),
+    level=log_level,
+    format=log_format,
+    datefmt=log_datefmt,
 )
-logHandler.formatter = logging.Formatter(
-    "%(asctime)s %(message)s", datefmt="%Y-%m-%d %H:%M"
-)
-log.addHandler(logHandler)
-log.setLevel(logging.INFO)  # may be overwritten elsewhere
+# log = logging.getLogger(__name__)
+# logHandler = logging.handlers.RotatingFileHandler(
+#     "./logs/clear_dirs.log",
+#     maxBytes=10 * 1024**2,
+#     backupCount=50,
+# )
+# log.setFormatter = 
+# log.addHandler(logHandler)
 
 # get mongodb ready -------------------------------------------------------------------- #
 mongo_local_client:pymongo.MongoClient = pymongo.MongoClient(
@@ -1977,11 +1990,11 @@ class LimsDVDatabase(DataValidationDB):
             )
             upload_output_json = [f for f in matching_output_jsons]
             if not upload_output_json:
-                log.info(f"No matching output json found for {upload_input_json}")
+                logging.debug(f"No matching output json found for {upload_input_json}")
                 continue
 
             if len(upload_output_json) > 1:
-                log.info(
+                logging.debug(
                     f"Multiple output json files found for {upload_input_json}: {upload_output_json}"
                 )
                 continue

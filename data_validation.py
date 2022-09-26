@@ -1693,7 +1693,7 @@ class MongoDataValidationDB(DataValidationDB):
                 )
 
         if not entries:
-            return None
+            return []
 
         # * updated Sep '22: we now return set of mixed DVFile types, depending on the
         #  checksum type stored in the database. similar types aren't enforced in DVFile

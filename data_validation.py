@@ -138,7 +138,7 @@ NPEXP_PATH = pathlib.Path("//allen/programs/mindscope/workgroups/np-exp")
 
 # setup logging ------------------------------------------------------------------------
 # LOG_DIR = fR"//allen/programs/mindscope/workgroups/np-exp/ben/data_validation/logs/"
-log_level = logging.DEBUG
+log_level = logging.INFO
 log_format = "%(asctime)s %(threadName)s %(message)s"  # ? %(relativeCreated)6d
 log_datefmt = "%Y-%m-%d %H:%M"
 log_folder = pathlib.Path("./logs")

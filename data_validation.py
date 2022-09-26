@@ -2449,10 +2449,11 @@ class DataValidationStatus:
 
             if not isinstance(self.file, SessionFile):
                 dest_relative = self.file.path.name
-            elif session_folder in dest_root.parts:
-                dest_relative = self.file.relative_path
+            elif self.file.probe_dir:
+                probe_dir_parent = [f.parent for f in self.file.path.parents if f'_probe{self.file.probe_dir}' in f.parts[-1]][0]
+                dest_relative = self.file.path.relative_to(probe_dir_parent)
             else:
-                dest_relative = self.file.session_relative_path
+                dest_relative = self.file.relative_path
 
         final_dest = dest_root / dest_relative
 
@@ -2470,82 +2471,96 @@ class DataValidationStatus:
 
         # check whether the file already exists in the database
         dest_matches = self.db.get_matches(dest_file, match=dest_file.SELVES)
-
-        # determine next action:
-        if recopy is True:
-            pass  # we'll copy regardless
-        elif not dest_file.path.exists():
-            # we may not want to copy if we copied to this location previously and
-            # since cleared the file
-            if dest_matches and any(
-                s.compare(d) in s.VALID_COPIES
-                for s in self.selves
-                for d in dest_matches
-            ):
-                return
-        elif self.file.path.stat() == final_dest.stat() or any(
-            s.compare(d) in (s.VALID_COPIES, s.UNCONFIRMED_COPIES)
+        valid_copies = any(
+            s.compare(d) in s.VALID_COPIES
             for s in self.selves
-            for d in dest_matches
-        ):  # we previously copied to this location and the file still exists
-            if not validate:
+            for d in [dest_file, *dest_matches]
+            )
+        unconfirmed_copies = any(
+            s.compare(d) in s.UNCONFIRMED_COPIES
+            for s in self.selves
+            for d in [dest_file, *dest_matches]
+            )
+        invalid_copies = any(
+            s.compare(d) in s.INVALID_COPIES
+            for s in self.selves
+            for d in [dest_file, *dest_matches]
+            )
+        # determine next action:
+        do_copy = False
+        if recopy is True:
+            do_copy = True  # we'll copy regardless
+        elif not dest_file.path.exists() and valid_copies:
+            # we copied to this location previously and
+            # since cleared the file because it was validated
+            do_copy = False
+            if invalid_copies:
+                do_copy = True
+        elif not dest_file.path.exists():
+            do_copy = True
+        elif self.file.path.stat() == final_dest.stat():
+            # we previously copied to this location and the file still exists
+            if invalid_copies:
+                do_copy = True
+            elif not validate:
                 return  # we're not validating and the existing dest file looks like a copy according to OS stats
-            elif any(
-                s.compare(d) in s.VALID_COPIES
-                for s in self.selves
-                for d in dest_matches
-            ):
-                return  # we have a valid copy already
-
+            else:
+                do_copy = False  # we have a valid copy already
+            
         final_dest.parent.mkdir(parents=True, exist_ok=True)
 
-        while True:
-
-            try:
-                logging.info(f"Copying: {self.file} -> {final_dest}")
-                shutil.copy2(self.file.path, final_dest)
-
-            except OSError as e:
-                logging.warning(f"Copy failed - {e}: {self.file} -> {final_dest}")
-                return
-
-            if not final_dest.exists():
-                logging.debug(f"Copy failed - re-trying: {self.file} -> {final_dest}")
-                continue
-
+        while do_copy is True or validate is True:
+            
+            if do_copy:
+                try:
+                    logging.info(f"Copying: {self.file} -> {final_dest}")
+                    shutil.copy2(self.file.path, final_dest)
+                except OSError as e:
+                    logging.warning(f"Copy failed - {e}: {self.file} -> {final_dest}")
+                    return
+                
+                if not final_dest.exists():
+                    logging.debug(f"Copy failed - re-trying: {self.file} -> {final_dest}")
+                    continue
+            
+                if not validate:
+                    logging.debug(
+                        f"Copied (without validation): {self.file} -> {final_dest}"
+                    )
+            
             if not validate:
-                logging.debug(
-                    f"Copied (without validation): {self.file} -> {final_dest}"
-                )
                 break
-
-            if not any(s.checksum for s in self.selves):
-                self.file = strategies.generate_checksum(self.file, self.db)
-            else:
+            
+            if do_copy is False:
+                dest_file = strategies.exchange_if_checksum_in_db(dest_file, self.db)   
+            if do_copy is False and not dest_file.checksum:
+                # generate checksum for existing, unconfirmed copy
+                dest_file = strategies.generate_checksum(dest_file, self.db)
+            if do_copy is True:
+                # generate checksum for newly-copied file, regardless
+                dest_file = strategies.generate_checksum(dest_file, self.db)
+                
+            if any(s.checksum for s in self.selves):
                 # we have a checksum already so avoid regenerating
                 for s in self.selves:
-                    if isinstance(s, self.db.DVFile) and s.checksum:
+                    if isinstance(s, dest_file.__class__) and s.checksum:
                         # use type specified in db if possible
                         self.file = s
                         break
-                else:
-                    # use the first one
-                    self.file = [s for s in self.selves if s.checksum][0]
-                    # convert dest_file to the same type as self.file
-                    dest_file = self.file.__class__(path=final_dest)
-            # generate checksum for newly-copied dest_file
-            dest_file = strategies.generate_checksum(dest_file, self.db)
+            if not self.file.checksum:
+                self.file = dest_file.__class__(path=self.file.path)
+                self.file = strategies.generate_checksum(self.file, self.db)
 
             if self.file.compare(dest_file) in self.file.VALID_COPIES:
                 logging.debug(f"Copied and validated: {self.file} -> {final_dest}")
-                self.file.matches.append(dest_file)
+                self.matches.append(dest_file)
                 break
             elif self.file.compare(dest_file) in self.file.INVALID_COPIES:
                 logging.info(
                     f"Copy validation failed - retrying: {self.file} -> {final_dest}"
                 )
                 # the source data may have changed, and we picked up an old checksum
-                # the db - regen
+                # from the db - regenerate
                 self.file = strategies.generate_checksum(self.file, self.db)
                 if self.file.compare(dest_file) in self.file.VALID_COPIES:
                     break
@@ -2554,6 +2569,7 @@ class DataValidationStatus:
                 logging.info(
                     f"Unexpected copy validation result  {self.file.compare(dest_file).name} - retrying:  {self.file} -> {final_dest}"
                 )
+                do_copy = True
                 continue
 
         if (

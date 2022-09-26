@@ -2508,9 +2508,12 @@ class DataValidationStatus:
                 do_copy = False  # we have a valid copy already
             
         final_dest.parent.mkdir(parents=True, exist_ok=True)
-
-        while do_copy is True or validate is True:
+        
+        attempts = 0
+        while (do_copy is True or validate is True) and attempts < 3:
             
+            attempts += 1
+
             if do_copy:
                 try:
                     logging.info(f"Copying: {self.file} -> {final_dest}")
@@ -2561,17 +2564,21 @@ class DataValidationStatus:
                 )
                 # the source data may have changed, and we picked up an old checksum
                 # from the db - regenerate
-                self.file = strategies.generate_checksum(self.file, self.db)
+                self.file = strategies.generate_checksum(self.file, self.db)            
                 if self.file.compare(dest_file) in self.file.VALID_COPIES:
                     break
+                recopy = True
+                do_copy = True
                 continue
             else:
                 logging.info(
-                    f"Unexpected copy validation result  {self.file.compare(dest_file).name} - retrying:  {self.file} -> {final_dest}"
+                    f"Copy validation failed - retrying: {self.file} {self.file.checksum_name} -> {dest_file.checksum_name} {final_dest}"
                 )
                 do_copy = True
                 continue
-
+        else:
+            logging.debug(f"Copying or validation failed after {attempts} attempts: {self.file} -> {final_dest}")
+        
         if (
             remove_source is True
             and validate is True

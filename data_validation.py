@@ -2452,6 +2452,10 @@ class DataValidationStatus:
             elif self.file.probe_dir:
                 probe_dir_parent = [f.parent for f in self.file.path.parents if f'_probe{self.file.probe_dir}' in f.parts[-1]][0]
                 dest_relative = self.file.path.relative_to(probe_dir_parent)
+            elif session_folder not in str(dest_root) + str(self.file.relative_path):
+                # we can't allow a session file to be copied without its session
+                # identifier somewhere in its path 
+                dest_relative = self.file.session_relative_path
             else:
                 dest_relative = self.file.relative_path
 

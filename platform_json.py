@@ -530,8 +530,11 @@ class Entry:
                 return hits[sizes.index(max(sizes))] # largest file size
         
         if len(hits) > 1 and all(h.is_dir() for h in hits):
-            raise NotImplementedError 
-            #TODO get logic from oe060 sorting
+            largest = self.get_largest_dir(hits)
+            if largest is None:
+                return hits[0] # all matches the same size
+            else:
+                return largest
     
     def get_largest_dir(self, dirs:List[pathlib.Path]) -> Union[None,pathlib.Path]:
         """Return the largest directory from a list of directories, or None if all are the same size"""
@@ -657,21 +660,24 @@ class EphysRaw(Entry):
         def filter_hits(hits:List[pathlib.Path]) -> List[pathlib.Path]:
             return [h for h in hits if not any(f in h.as_posix() for f in ['_temp', '_pretest'])]
         
+        # search for folder on acq drive with matching session folder and/or creation time
+        hits = []
+        hits += self.source.glob(f"{self.platform_json.session.folder}{self.probe_group_map[self.probe_letter]}*")
         glob = f"*{self.platform_json.session.folder}*"
-        hits = get_dirs_created_between(self.source,glob,self.platform_json.exp_start,self.platform_json.exp_end)
+        hits += get_dirs_created_between(self.source,glob,self.platform_json.exp_start,self.platform_json.exp_end)
         
         single_hit = self.return_single_hit(filter_hits(hits))
         if single_hit:
             return single_hit
-            
+        
+        # in case none returned above, search more generally without the session folder name
         hits = get_dirs_created_between(self.source,'*',self.platform_json.exp_start,self.platform_json.exp_end)
         single_hit = self.return_single_hit(filter_hits(hits))      
         if single_hit:
             return single_hit   
-                   
+        
         # TODO if multiple folders found, find the largest
         # TODO locate even if no folders with matching session folder or creation time
-        print(f"No matches for {self.platform_json.session.folder} in {self.source} or no folders created during the experiment")
     
     @property 
     def platform_json_on_z_drive(self) -> bool:

@@ -775,35 +775,57 @@ class Sync(Entry):
         
 # -------------------------------------------------------------------------------------- #
 class Camstim(Entry):
-    pkls = ['behavior','optogenetic','visual','replay']
-    descriptors = [f"{pkl}_stimulus" for pkl in pkls]
     
+    descriptive_labels = ['behavior','optogenetic','visual','replay']
     lims_upload_labels = [f"{pkl}_stimulus" for pkl in descriptive_labels]
+    
+    # for reference, not used/doesn't need updating:
+    pkl_file_label_descriptive_label_map = {
+        'stim':'visual',
+        'mapping': 'visual',
+        'behavior': 'behavior',
+        'opto': 'optogenetic',
+        }
+        
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.source = self.platform_json.src_pkl
-        self.pkl = self.dir_or_file_name.split('.')[-2] 
-        
+        self.pkl_file_label = self.dir_or_file_name.split('.')[-2] 
+        self.descriptive_label = self.descriptive_name.split('_')[0]
+    
     @property
     def origin(self) -> pathlib.Path:
         hits = []
         
         # behavior ----------------------------------------------------------------------------- #
-        if self.pkl == 'behavior':
+        if self.descriptive_label == 'visual':
         
             # When all processing completes, camstim Agent class passes data and uuid to
             # /camstim/lims BehaviorSession class, and write_behavior_data() writes a
             # final .pkl with default name YYYYMMDDSSSS_mouseID_foragingID.pkl
             # - if we have a foraging ID, we can search for that
             foraging_pkl = None
-            #* this is our preferred behavior pkl
+            #* this is our preferred visual pkl
             if self.platform_json.foraging_id:
                 matches = list(self.source.glob(f"*{self.platform_json.foraging_id}*.pkl"))
                 if foraging_pkl := return_single_hit(matches):
                     return foraging_pkl
                     
+            # if no foraging ID is found from lims (behavior session can be recorded
+            # with no date_of_acquisition, which makes it difficult to locate), there may be a pkl with a foraging ID that matches the
+            # foraging_id in the platform json 
+            if foraging_pkl := return_single_hit(list(self.source.glob(f"*{self.platform_json.foraging_id_contents}*.pkl"))):
+                return foraging_pkl
+            
+            # otherwise, we can search for any pkl created during the timeframe of the
+            # and check whether it has a foraging ID in its name
+            glob = ("*.pkl")
+            matches = get_files_created_between(self.source,glob,self.platform_json.exp_start,self.platform_json.exp_end)
+            if foraging_pkls:= [pkl for pkl in matches if contains_foraging_id(pkl.name)]:
+                return return_single_hit(foraging_pkls)
+            
             mtrain_stage_pkl = None
-            #* this is second preference behavior pkl if the foraging pkl is not found
+            #* this is second preference visual pkl if the foraging pkl is not found
             mtrain_stage = self.platform_json.contents.get('stimulus_name', None)
             mtrain_stage = self.script.stem if mtrain_stage is None else mtrain_stage
             if mtrain_stage:
@@ -814,16 +836,15 @@ class Camstim(Entry):
             if mtrain_stage_pkl:
                 return mtrain_stage_pkl
 
-            #* last resort is to search for any pkl with 'behavior' in its name, created
-            #* within the timeframe of the experiment
-            # following the logic for the other pkls below:
+            #* last resort is to search for any pkl with 'stim' or 'mapping' in its name - created
+            #* within the timeframe of the experiment - using the logic for the other pkls below:
             
-        # optogenetic, visual, replay ---------------------------------------------------------- #
-        glob = f"*{self.pkl}*.pkl"
+        # optogenetic, behavior, replay ---------------------------------------------------------- #
+        glob = f"*{self.pkl_file_label}*.pkl"
         hits += get_files_created_between(self.source,glob,self.platform_json.exp_start,self.platform_json.exp_end)
             
         if len(hits) == 0:
-            print(f"No matching {self.pkl}.pkl found")
+            print(f"No matching {self.pkl_file_label}.pkl found")
         
         return return_single_hit(hits)
 

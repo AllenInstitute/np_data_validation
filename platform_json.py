@@ -31,7 +31,7 @@ MVR_RELATIVE_PATH = pathlib.Path("c$/ProgramData/AIBS_MPE/mvr/data")
 NEWSCALE_RELATIVE_PATH = pathlib.Path("c$/MPM_data")
 CAMVIEWER_RELATIVE_PATH = pathlib.Path("c$/Users/svc_neuropix/cv3dImages") # NP.0 only
 CAMSTIM_RELATIVE_PATH = pathlib.Path("c$/ProgramData/AIBS_MPE/camstim/data")
-SYNC_RELATIVE_PATH = pathlib.Path("c$/ProgramData/AIBS_MPE/sync$/data")
+SYNC_RELATIVE_PATH = pathlib.Path("c$/ProgramData/AIBS_MPE/sync/data")
 
 NEUROPIXELS_DATA_RELATIVE_PATH = pathlib.Path("c$/ProgramData/AIBS_MPE/neuropixels_data")
 NPEXP_PATH = pathlib.Path("//allen/programs/mindscope/workgroups/np-exp")

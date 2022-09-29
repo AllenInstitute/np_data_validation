@@ -582,7 +582,7 @@ class Entry:
             if lims and lims.get("storage_directory",None):
                 session_dir = pathlib.Path(lims["storage_directory"])
                 if (session_dir / self.dir_or_file_name).exists():
-                    return session_dir / self.dir_or_file_name
+                    self._lims = session_dir / self.dir_or_file_name
                 elif f := list(session_dir.glob(f"*/*{self.dir_or_file_name}*")):
                     self._lims = f[-1]
                 else:

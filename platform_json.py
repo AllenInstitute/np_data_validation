@@ -732,6 +732,8 @@ class Camstim(Entry):
     pkls = ['behavior','optogenetic','visual','replay']
     descriptors = [f"{pkl}_stimulus" for pkl in pkls]
     
+    foraging_id_re = R"(\d{12})_(\d{6,7})_([0-9,a-f]{8}-[0-9,a-f]{4}-[0-9,a-f]{4}-[0-9,a-f]{4}-[0-9,a-f]{12})"
+    
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.source = self.platform_json.src_pkl
@@ -740,12 +742,43 @@ class Camstim(Entry):
     @property
     def origin(self) -> pathlib.Path:
         hits = []
+        
+        # behavior ----------------------------------------------------------------------------- #
+        if self.pkl == 'behavior':
+        
+            # When all processing completes, camstim Agent class passes data and uuid to
+            # /camstim/lims BehaviorSession class, and write_behavior_data() writes a
+            # final .pkl with default name YYYYMMDDSSSS_mouseID_foragingID.pkl
+            # - if we have a foraging ID, we can search for that
+            foraging_pkl = None
+            #* this is our preferred behavior pkl
+            if self.platform_json.foraging_id:
+                matches = list(self.source.glob(f"*{self.platform_json.foraging_id}*.pkl"))
+                if matches:
+                    foraging_pkl = self.return_single_hit(matches)
+            if foraging_pkl:
+                return foraging_pkl
+                    
+            mtrain_stage_pkl = None
+            #* this is second preference behavior pkl if the foraging pkl is not found
+            mtrain_stage = self.platform_json.contents.get('stimulus_name', None)
+            mtrain_stage = self.script.stem if mtrain_stage is None else mtrain_stage
+            if mtrain_stage:
+                glob = f"*{mtrain_stage}*.pkl"
+                matches = self.get_files_created_between(self.source,glob,self.platform_json.exp_start,self.platform_json.exp_end)
+                if matches:
+                    mtrain_stage_pkl = self.return_single_hit(matches)
+            if mtrain_stage_pkl:
+                return mtrain_stage_pkl
+
+            #* last resort is to search for any pkl with 'behavior' in its name, created
+            #* within the timeframe of the experiment
+            # following the logic for the other pkls below:
+            
+        # optogenetic, visual, replay ---------------------------------------------------------- #
         glob = f"*{self.pkl}*.pkl"
         hits += get_files_created_between(self.source,glob,self.platform_json.exp_start,self.platform_json.exp_end)
-        
-        glob = f"*{self.platform_json.contents['stimulus_name']}*.pkl"
-        hits += get_files_created_between(self.source,glob,self.platform_json.exp_start,self.platform_json.exp_end)
-        
+            
         if len(hits) == 0:
             print(f"No matching {self.pkl}.pkl found")
         

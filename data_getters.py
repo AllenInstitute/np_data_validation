@@ -5,13 +5,159 @@ Created on Tue Jun  9 14:33:49 2020
 @author: svc_ccg
 """
 
+import datetime
 import glob
 import json
 import os  # , shutil
+from typing import Union
 
+import psycopg2
 from psycopg2 import connect, extras
 
 
+def get_foraging_id_from_behavior_session(
+    mouse_id: Union[int,str],
+    start:datetime.datetime,
+    end:datetime.datetime
+    ) -> str:
+    fmt = "%Y-%m-%d %H:%M"
+    query = f"""
+            SELECT foraging_id
+            FROM behavior_sessions bs
+                JOIN specimens sp ON sp.donor_id = bs.donor_id
+            WHERE date_of_acquisition between '{start.strftime(fmt)}' and '{end.strftime(fmt)}'
+            and external_specimen_name = '{mouse_id}'
+            """
+    cur = get_psql_cursor(get_cred_location())
+    cur.execute(query)
+    info_list = []
+    if cur.rowcount == 0:
+        raise Exception(f"No behavior session found for MID {mouse_id} between {start} and {end}")
+    elif cur.rowcount != 0:
+        info_list = cur.fetchall()
+        if len(info_list) > 1:
+            raise Exception(f"Multiple behavior sessions found for MID {mouse_id} between {start} and {end}")
+        elif info_list == []:
+            raise Exception(f"No behavior session found for MID {mouse_id} between {start} and {end}")
+        elif len(info_list) == 1 and isinstance(info_list[0],tuple):
+            foraging_id = info_list[0][0]
+            return foraging_id  
+        else: 
+            raise Exception(f"Unexpected behavior session info for MID {mouse_id} between {start} and {end}: {info_list}")   
+    
+# functions from Ahad ------------------------------------------------------------------ #
+
+def get_sess_probes(session_id):
+    """Gets a specific session's probes and workflow states
+    Parameters
+    ----------
+    session_id: int
+    The sessions's id value
+    Returns
+    -------
+    info_list: str
+    A list of the session's passing probes
+    """
+    EPHYS_PROBE_QRY = '''
+    SELECT es.workflow_state,
+        ARRAY_AGG(ep.id ORDER BY ep.id) AS ephys_probe_ids
+    FROM ecephys_sessions es
+        LEFT JOIN ecephys_probes ep ON ep.ecephys_session_id = es.id
+    WHERE es.id = {}
+    GROUP BY es.id
+    '''
+    PROBE_ID_QRY = '''
+    SELECT ep.name,
+        ep.workflow_state,
+        ep.storage_directory
+    FROM ecephys_probes ep
+        JOIN ecephys_sessions es ON es.id = ep.ecephys_session_id
+    WHERE ep.id = {}
+    '''
+    cur = get_psql_cursor(get_cred_location())
+    lims_query = EPHYS_PROBE_QRY.format(session_id)
+    cur.execute(lims_query)
+    info_list = []
+    if cur.rowcount == 0:
+        raise Exception("No data was found for ID {}".format(session_id))
+    elif cur.rowcount != 0:
+        info_list = cur.fetchall()
+        probes_list = []
+        probes_id_list = info_list[0][1]
+        return probes_id_list
+        # returning probe IDs early - need to know only if they exist
+        for probe_id in probes_id_list:
+            print(probe_id)
+            probe_query = PROBE_ID_QRY.format(probe_id)
+            cur.execute(probe_query)
+            if cur.rowcount == 0:
+                raise Exception("No data was found for ID {}".format(
+                                session_id))
+            else:
+                probe_name_status = cur.fetchall()
+                probe_status = probe_name_status[0][1]
+                probe_name = probe_name_status[0][0]
+                probe_storage = probe_name_status[0][2]
+                print(probe_storage)
+                if (probe_status == 'passed' or probe_status == 'created') and probe_storage is not None:
+                    if(probe_status) == 'passed':
+                        print(probe_name)
+                    else:
+                        print(probe_name + " is created, but not passed")
+                    probes_list.append(probe_name)
+        return probes_list
+    
+    
+def get_cred_location():
+    """Gets content of firebase credential file
+    Files are ignored and not committed to the repository
+    Parameters
+    ----------
+    Returns
+    -------
+    cred_json: str
+    path to json file storing credential information
+    """
+    dir = os.path.dirname(__file__)
+    cred_json = os.path.join(dir, ".cred", "post_gres.json")
+    return cred_json
+
+
+
+def get_psql_cursor(cred_json):
+    """Initializes a connection to the postgres database
+    Parameters
+    ----------
+    cred_json: str
+    A path to the credential json, which stores the following info:
+    dbname: str
+    The database name
+    user: str
+    The username
+    host: str
+    Host location of the database
+    password: str
+    The password for the database
+    post: int
+    The port to connect to
+    Returns
+    -------
+    con: connect
+    A connection to the postgres database
+    """
+
+    dbname = 'lims2'
+    user = 'limsreader'
+    host ='limsdb2'
+    password = 'limsro'
+    port = 5432
+    con = psycopg2.connect(dbname=dbname, user=user, host=host, password=password,
+                  port=port)
+    con.set_session(readonly=True, autocommit=True)
+    return con.cursor()
+
+    
+# functions from Corbett --------------------------------------------------------------- #
 class data_getter():
     ''' parent class for data getter, should be able to 
     1) connect to data source
@@ -96,6 +242,8 @@ class lims_data_getter(data_getter):
 
         self.cursor.execute(WKF_QRY.format(self.lims_id))
         exp_data = self.cursor.fetchall()
+        if not exp_data:
+            return
         self.data_dict.update(exp_data[0])                        #update data_dict to have all the experiment metadata
         [self.data_dict.pop(key) for key in ['wkft', 'wkf_path']] #...but remove the wkf stuff
 

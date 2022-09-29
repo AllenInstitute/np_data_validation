@@ -12,6 +12,8 @@ from typing import Dict, List, Tuple, Union
 
 import requests
 
+import data_getters as dg
+import mtrain
 import nptk
 
 # -------------------------------------------------------------------------------------- #
@@ -491,6 +493,7 @@ class Entry:
                 self.descriptive_name = 'isi _registration_coordinates'
             elif self.descriptive_name == 'isi _registration_coordinates':
                 self.descriptive_name = 'isi_registration_coordinates'
+        
         # a presumed path to the data in the same folder as the platform json file
         self.expected_data: pathlib.Path = self.platform_json.path.parent / self.platform_json.dict_expected[self.descriptive_name][self.dir_or_file_type]
                 
@@ -1357,6 +1360,7 @@ def session_to_platform_json_path(session:Union[int, str],root:Union[str,pathlib
     else: 
         raise ValueError(f"provide a sessionID or a full folder string: 'sessionID_mouseID_YYYYMMDD'")
     
+    root = pathlib.Path(root)
     results = [path for path in root.glob(f"{file_glob}/*platform*.json")]
     if not results or len(results) == 0:
         print("session not found on np-exp - please correct")

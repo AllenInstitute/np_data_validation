@@ -350,6 +350,74 @@ class PlatformJson(SessionFile):
         return self.contents.get('experiment', self.session.project)
     
     @property
+    def script(self) -> pathlib.Path:
+        """Platform json 'script_name' is a path to the script that was run, which is
+        (we expect) the name of the mtrain *stage*. For the actual script that was run,
+        see self.mtrain_session['script'] """
+        script = self.contents.get('script_name', None)
+        if not script:
+            return None
+        script = pathlib.Path(script)
+        
+        camstim_root = [p for p in script.parents[-1::-1] if 'camstim' in p.name.lower()][0]
+        return self.src_pkl.parent / script.relative_to(camstim_root)
+    
+    @property
+    def mtrain_session(self) -> dict:
+        """Info from MTrain on the last behavior session for the mouse on the experiment
+        day specified in the platform json file.  This is used to get the foraging_id"""
+        try:
+            mouse_info = mtrain.MTrain(self.session.mouse)
+        except mtrain.MouseNotInMTrainError:
+            return None
+        return mouse_info.last_behavior_session_on(self.exp_start.date())
+    
+    # foraging id
+    # -------------------------------------------------------------------------- #
+    # there are few ways to get the foraging id - it's currently written into the
+    # platform json file by the WSE, but may be incorrect (DR experiments create a new
+    # foraging id that the WSE isn't aware of) or missing (variability project).
+    # Functions here find the foraging id in a variety of ways - we'll just choose one
+    # to use.
+    
+    @property
+    def foraging_id_contents(self) -> str:
+        """Foraging ID currently in the platform json.
+        
+        Not all mice have foraging IDs (e.g. variability project)"""
+        from_contents = self.contents.get('foraging_id', None)
+        return from_contents 
+    
+    @property
+    def foraging_id_mtrain(self) -> str:
+        """Foraging ID recorded for the last behavior session of the experiment day for
+        this mouse (mouse/day from platform json). 
+        
+        Not all mice have foraging IDs (e.g. variability project)"""
+        from_mtrain = self.mtrain_session['id']
+        return from_mtrain 
+    
+    @property
+    def foraging_id_lims(self) -> str:
+        """Foraging ID from lims based on start/stop time of experiment and mouse ID
+        (from platform json), obtained from the behavior session that ran at the time. 
+        
+        Not all mice have foraging IDs (e.g. variability project)"""
+        from_lims = dg.get_foraging_id_from_behavior_session(
+            self.session.mouse,
+            self.exp_start,
+            self.exp_end,
+        )
+        return from_lims if from_lims else None 
+    
+    @property
+    def foraging_id(self):
+        """Final foraging ID to use in platform json - currently using ID from 
+        behavior session in lims"""
+        return self.foraging_id_lims
+    # - ------------------------------------------------------------------------------------ #
+    
+    @property
     def mon(self):
         return nptk.ConfigHTTP.hostname(f'{self.rig}-Mon')
     @property
@@ -1242,9 +1310,12 @@ class Files(PlatformJson):
         
         print(f"updating {self.path} with {len(self.dict_missing)} new entries and {len(self.dict_incorrect)} corrected entries")
         contents = self.contents # must copy contents to avoid breaking class property (Which pulls from .json)
+        
+        # update entries
         contents['files'] = {**self.dict_corrected}
         contents['project'] = self.session.project
-            
+        contents['foraging_id'] = self.foraging_id
+        
         with self.path.open('w') as f:
             json.dump(dict(contents), f, indent=4)
         print(f"updated {self.path.name}")

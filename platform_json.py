@@ -457,10 +457,21 @@ class Entry:
         sources = []
         if self.origin:
             sources.append(self.origin)
-        if "neuropixels_data" not in str(self.expected_data):
+        if self.npexp.exists() and self.z.exists():
+            if self.npexp.stat().st_size == self.z.stat().st_size:
+                sources.append(self.npexp)
+            else:
+                print(f'Copies differ between {self.dir_or_file_name} on np-exp ({self.npexp.stat().st_size} B) and Z: drive ({self.z.stat().st_size})')
+                if self.npexp.stat().st_size > self.z.stat().st_size:
+                    print(f'Using copy on Z: drive')
+                    sources.append(self.z)
+                if self.npexp.stat().st_size < self.z.stat().st_size:
+                    print(f'Using copy on np-exp')
+                    sources.append(self.npexp)
+        elif self.npexp.exists():
+            sources.append(self.npexp)    
+        elif self.z.exists():
             sources.append(self.z)
-        if NPEXP_PATH not in self.expected_data.parents:
-            sources.append(self.npexp)
         return sources
 
     @property
@@ -518,6 +529,23 @@ class Entry:
             raise NotImplementedError 
             #TODO get logic from oe060 sorting
     
+    def get_largest_dir(self, dirs:List[pathlib.Path]) -> Union[None,pathlib.Path]:
+        """Return the largest directory from a list of directories, or None if all are the same size"""
+        
+        if not all(d.is_dir() for d in dirs):
+            raise ValueError(f"Not all entries are directories: {dirs}")
+        if len(dirs) == 1:
+            return dirs[0]
+                
+        dir_size = []
+        for idx, dir in enumerate(dirs):
+            dir_size.append(sum(f.stat().st_size for f in pathlib.Path(dir).rglob('*') if pathlib.Path(f).is_file()))
+        
+        if all(s == dir_size[0] for s in dir_size):
+            return None
+        max_size_idx = dir_size.index(max(dir_size))    
+        return dirs[max_size_idx]
+        
     def copy(self, dest: Union[str, pathlib.Path]=None):
         """Copy original file to a specified destination folder"""
         # TODO add checksum of file/dir to db
@@ -535,9 +563,21 @@ class Entry:
             if not source.exists():
                 continue 
             
-            if source.is_dir():
-                pass
-                # TODO add size comparison
+            if source == dest:
+                continue
+            
+            if source.is_dir() and dest.is_dir():
+                larger = self.get_largest_dir([source,dest])
+                
+                if larger is None:
+                    # both the same size
+                    print(f"Original data and copy in folder are the same size")
+
+                if source == larger:
+                    pass
+                elif dest == larger:
+                    print(f"{source} is smaller than {dest} - copy manually if you really want to overwrite")
+                    return
                 
             if source.is_file() and dest.is_file():
                 

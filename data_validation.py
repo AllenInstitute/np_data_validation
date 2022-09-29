@@ -2471,6 +2471,9 @@ class DataValidationStatus:
             dest_file = self.db.DVFile(path=final_dest)
         except SessionError:
             dest_file = OrphanedDVFile(path=final_dest)
+        except FilepathIsDirError:
+            logging.warning(f"Could not copy: not a filepath {self.file.path}")
+            return
 
         if self.file.probe_dir != dest_file.probe_dir:
             logging.warning(

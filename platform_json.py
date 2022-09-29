@@ -1145,7 +1145,7 @@ class Files(PlatformJson):
     # checks on status of current and located data ----------------------------------------- #
     @property
     def correct_data(self) -> bool:
-        return all([e.correct_data for e in self.entries_current])
+        return all([e.correct_data for e in self.entries_expected])
     
     @property
     def correct_dict(self) -> bool:

@@ -384,11 +384,19 @@ class PlatformJson(SessionFile):
     
     @property
     def foraging_id_contents(self) -> str:
-        """Foraging ID currently in the platform json.
+        """Foraging ID currently in the platform json. May be in the 'foraging_id' field
+        or 'foraging_id_list'.
         
         Not all mice have foraging IDs (e.g. variability project)"""
-        from_contents = self.contents.get('foraging_id', None)
-        return from_contents 
+        
+        from_field = self.contents.get('foraging_id', None)
+        foraging_id = contains_foraging_id(from_field)
+        if foraging_id:
+            return foraging_id
+        
+        from_list = [contains_foraging_id(s) for s in self.contents.get('foraging_id_list', [])]
+        if len(from_list) == 1:
+            return from_list[0]
     
     @property
     def foraging_id_mtrain(self) -> str:
@@ -578,52 +586,6 @@ class Entry:
         """Rename the current data in the same folder as the platform json file"""
         pass
         # TODO 
-    
-    def return_single_hit(self, hits:List[pathlib.Path]) -> pathlib.Path:
-        """Return a single hit if possible, or None if no hits.
-        
-        Processes the output from get_files[or dirs]_created_between() according to some
-        common rule(s) 
-        - (Current) take the largest filesize,
-        - (add?) look for session folder string, 
-        - (add?) exclude pretest/temp, 
-        """
-        if not hits:
-            return None
-        if len(hits) == 1:
-            return hits[0]
-        
-        if len(hits) > 1 and all(h.is_file() for h in hits):
-            sizes = [h.stat().st_size for h in hits if h]
-            if all(s == sizes[0] for s in sizes):
-                return hits[0] # all matches the same size
-            else: 
-                return hits[sizes.index(max(sizes))] # largest file size
-        
-        if len(hits) > 1 and all(h.is_dir() for h in hits):
-            largest = self.get_largest_dir(hits)
-            if largest is None:
-                return hits[0] # all matches the same size
-            else:
-                return largest
-    
-    def get_largest_dir(self, dirs:List[pathlib.Path]) -> Union[None,pathlib.Path]:
-        """Return the largest directory from a list of directories, or None if all are the same size"""
-        
-        if not all(d.is_dir() for d in dirs):
-            raise ValueError(f"Not all entries are directories: {dirs}")
-        if len(dirs) == 1:
-            return dirs[0]
-                
-        dir_size = []
-        for idx, dir in enumerate(dirs):
-            dir_size.append(sum(f.stat().st_size for f in pathlib.Path(dir).rglob('*') if pathlib.Path(f).is_file()))
-        
-        if all(s == dir_size[0] for s in dir_size):
-            return None
-        max_size_idx = dir_size.index(max(dir_size))    
-        return dirs[max_size_idx]
-        
     def copy(self, dest: Union[str, pathlib.Path]=None):
         """Copy original file to a specified destination folder"""
         # TODO add checksum of file/dir to db
@@ -645,7 +607,7 @@ class Entry:
                 continue
             
             if source.is_dir() and dest.is_dir():
-                larger = self.get_largest_dir([source,dest])
+                larger = get_largest_dir([source,dest])
                 
                 if larger is None:
                     # both the same size
@@ -737,13 +699,13 @@ class EphysRaw(Entry):
         glob = f"*{self.platform_json.session.folder}*"
         hits += get_dirs_created_between(self.source,glob,self.platform_json.exp_start,self.platform_json.exp_end)
         
-        single_hit = self.return_single_hit(filter_hits(hits))
+        single_hit = return_single_hit(filter_hits(hits))
         if single_hit:
             return single_hit
         
         # in case none returned above, search more generally without the session folder name
         hits = get_dirs_created_between(self.source,'*',self.platform_json.exp_start,self.platform_json.exp_end)
-        single_hit = self.return_single_hit(filter_hits(hits))      
+        single_hit = return_single_hit(filter_hits(hits))      
         if single_hit:
             return single_hit   
         
@@ -786,7 +748,7 @@ class Sync(Entry):
         glob = f"*{self.expected_data.suffix}"
         hits = get_files_created_between(self.source,glob,self.platform_json.exp_start,self.platform_json.exp_end)
         if hits:
-            return self.return_single_hit(hits)
+            return return_single_hit(hits)
        
         # try again with differnt search
         glob = f"*{self.platform_json.session.folder}*.sync"
@@ -794,7 +756,7 @@ class Sync(Entry):
         end = self.platform_json.exp_end + datetime.timedelta(minutes=30)
         hits = get_files_created_between(self.source,glob,start,end)
         if hits:
-            return self.return_single_hit(hits)
+            return return_single_hit(hits)
         # try again with differnt search
         glob = f"*{self.platform_json.session.folder}*.h5"
         start = self.platform_json.exp_start
@@ -802,7 +764,7 @@ class Sync(Entry):
         hits = get_files_created_between(self.source,glob,start,end)
         if not hits:
             print(f"No matching sync file found at origin {self.source}")
-        return self.return_single_hit(hits)
+        return return_single_hit(hits)
         
 # -------------------------------------------------------------------------------------- #
 class Camstim(Entry):
@@ -831,10 +793,8 @@ class Camstim(Entry):
             #* this is our preferred behavior pkl
             if self.platform_json.foraging_id:
                 matches = list(self.source.glob(f"*{self.platform_json.foraging_id}*.pkl"))
-                if matches:
-                    foraging_pkl = self.return_single_hit(matches)
-            if foraging_pkl:
-                return foraging_pkl
+                if foraging_pkl := return_single_hit(matches):
+                    return foraging_pkl
                     
             mtrain_stage_pkl = None
             #* this is second preference behavior pkl if the foraging pkl is not found
@@ -842,9 +802,9 @@ class Camstim(Entry):
             mtrain_stage = self.script.stem if mtrain_stage is None else mtrain_stage
             if mtrain_stage:
                 glob = f"*{mtrain_stage}*.pkl"
-                matches = self.get_files_created_between(self.source,glob,self.platform_json.exp_start,self.platform_json.exp_end)
+                matches = get_files_created_between(self.source,glob,self.platform_json.exp_start,self.platform_json.exp_end)
                 if matches:
-                    mtrain_stage_pkl = self.return_single_hit(matches)
+                    mtrain_stage_pkl = return_single_hit(matches)
             if mtrain_stage_pkl:
                 return mtrain_stage_pkl
 
@@ -859,7 +819,7 @@ class Camstim(Entry):
         if len(hits) == 0:
             print(f"No matching {self.pkl}.pkl found")
         
-        return self.return_single_hit(hits)
+        return return_single_hit(hits)
 
 # -------------------------------------------------------------------------------------- #
 class VideoTracking(Entry):
@@ -879,7 +839,7 @@ class VideoTracking(Entry):
         hits = get_files_created_between(self.source,glob,start,end)
         if not hits:
             print(f"No matching video info json at origin {self.source}")
-        return self.return_single_hit(hits)
+        return return_single_hit(hits)
     
 class VideoInfo(Entry):
     # preference would be to inherit from VideoTracking
@@ -903,7 +863,7 @@ class VideoInfo(Entry):
         hits = get_files_created_between(self.source,glob,start,end)
         if not hits:
             print(f"No matching video info json at origin {self.source}")
-        return self.return_single_hit(hits)
+        return return_single_hit(hits)
     
 # -------------------------------------------------------------------------------------- #
 class SurfaceImage(Entry):
@@ -1348,6 +1308,56 @@ def get_files_created_between(dir: Union[str, pathlib.Path], strsearch, start:da
             hits.append(match)
     return sorted(hits, key=get_created_timestamp_from_file)
 
+def return_single_hit(hits:List[pathlib.Path]) -> pathlib.Path:
+    """Return a single hit if possible, or None if no hits.
+    
+    Processes the output from get_files[or dirs]_created_between() according to some
+    common rule(s) 
+    - (Current) take the largest filesize,
+    - (add?) look for session folder string, 
+    - (add?) exclude pretest/temp, 
+    """
+    if not hits:
+        return None
+    if len(hits) == 1:
+        return hits[0]
+    
+    if len(hits) > 1 and all(h.is_file() for h in hits):
+        sizes = [h.stat().st_size for h in hits if h]
+        if all(s == sizes[0] for s in sizes):
+            return hits[0] # all matches the same size
+        else: 
+            return hits[sizes.index(max(sizes))] # largest file size
+    
+    if len(hits) > 1 and all(h.is_dir() for h in hits):
+        largest = get_largest_dir(hits)
+        if largest is None:
+            return hits[0] # all matches the same size
+        else:
+            return largest
+
+def get_largest_dir(dirs:List[pathlib.Path]) -> Union[None,pathlib.Path]:
+    """Return the largest directory from a list of directories, or None if all are the same size"""
+    
+    if not all(d.is_dir() for d in dirs):
+        raise ValueError(f"Not all entries are directories: {dirs}")
+    if len(dirs) == 1:
+        return dirs[0]
+            
+    dir_size = []
+    for idx, dir in enumerate(dirs):
+        dir_size.append(sum(f.stat().st_size for f in pathlib.Path(dir).rglob('*') if pathlib.Path(f).is_file()))
+    
+    if all(s == dir_size[0] for s in dir_size):
+        return None
+    max_size_idx = dir_size.index(max(dir_size))    
+    return dirs[max_size_idx]
+
+def contains_foraging_id(string: str) -> Union[str, None]:
+        """Check if a string contains the expected format for a foraging id"""
+        foraging_id_re = R"([0-9,a-f]{8}-[0-9,a-f]{4}-[0-9,a-f]{4}-[0-9,a-f]{4}-[0-9,a-f]{12})"
+        match = re.findall(foraging_id_re, string)
+        return match[0] if match else None
     
 def session_to_platform_json_path(session:Union[int, str],root:Union[str,pathlib.Path]=NPEXP_PATH)->pathlib.Path:
     """Converts a session id or folder str to a platform json file"""

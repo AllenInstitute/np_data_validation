@@ -1022,8 +1022,7 @@ class Files(PlatformJson):
    
     def remake_staging_folder(self):
         self.staging_folder.mkdir(parents=True,exist_ok=True)
-        [p.unlink() for p in self.staging_folder.rglob('*') if p.is_file()]
-        [p.rmdir() for p in self.staging_folder.rglob('*') if p.is_dir()]
+        [p.unlink() for p in self.staging_folder.rglob('*') if p.is_symlink()]
         # - copy the original platform json to the staging folder 
         if self.backup.exists():
             shutil.copy(self.backup,self.staging_folder)

@@ -491,13 +491,17 @@ class Entry:
         
     @property
     def lims(self) -> Union[pathlib.Path,None]:
-        if self.platform_json.session.lims:
-            session_dir = pathlib.Path(self.platform_json.session.lims["storage_directory"])
-            if (session_dir / self.dir_or_file_name).exists():
-                return session_dir / self.dir_or_file_name
-            for f in session_dir.rglob(f"*{self.dir_or_file_name}*"):
-                return f
-        return None
+        if not hasattr(self, '_lims'):
+            lims = self.platform_json.session.lims
+            if lims and lims.get("storage_directory",None):
+                session_dir = pathlib.Path(lims["storage_directory"])
+                if (session_dir / self.dir_or_file_name).exists():
+                    return session_dir / self.dir_or_file_name
+                elif f := list(session_dir.glob(f"*/*{self.dir_or_file_name}*")):
+                    self._lims = f[-1]
+                else:
+                    self._lims = None
+        return self._lims
     
     def rename():
         """Rename the current data in the same folder as the platform json file"""

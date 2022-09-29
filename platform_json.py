@@ -687,7 +687,7 @@ class EphysRaw(Entry):
         'F':'_probeDEF'
     }
     
-    descriptors = [f'ephys_raw_data_probe_{c}' for c in 'ABCDEF']
+    lims_upload_labels = [f'ephys_raw_data_probe_{c}' for c in 'ABCDEF']
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -744,7 +744,7 @@ class EphysRaw(Entry):
 # -------------------------------------------------------------------------------------- #
 class Sync(Entry):
     
-    descriptors = ['synchronization_data']
+    lims_upload_labels = ['synchronization_data']
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -778,8 +778,7 @@ class Camstim(Entry):
     pkls = ['behavior','optogenetic','visual','replay']
     descriptors = [f"{pkl}_stimulus" for pkl in pkls]
     
-    foraging_id_re = R"(\d{12})_(\d{6,7})_([0-9,a-f]{8}-[0-9,a-f]{4}-[0-9,a-f]{4}-[0-9,a-f]{4}-[0-9,a-f]{12})"
-    
+    lims_upload_labels = [f"{pkl}_stimulus" for pkl in descriptive_labels]
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.source = self.platform_json.src_pkl
@@ -831,7 +830,7 @@ class Camstim(Entry):
 # -------------------------------------------------------------------------------------- #
 class VideoTracking(Entry):
     cams = ['behavior','eye', 'face']
-    descriptors =[f"{cam}_tracking" for cam in cams]
+    lims_upload_labels =[f"{cam}_tracking" for cam in cams]
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -854,7 +853,7 @@ class VideoInfo(Entry):
     # and Entry.__subclasses__() no longer returns this class
     
     cams = ['beh','eye', 'face']
-    descriptors =[f"{cam}_cam_json" for cam in cams]
+    lims_upload_labels =[f"{cam}_cam_json" for cam in cams]
         
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -876,7 +875,7 @@ class VideoInfo(Entry):
 class SurfaceImage(Entry):
 
     imgs = ['pre_experiment','brain','pre_insertion','post_insertion','post_stimulus','post_experiment']
-    descriptors =[f"{img}_surface_image_{side}" for img in imgs for side in ['left','right'] ] # dorder of left/right is important for self.original
+    lims_upload_labels =[f"{img}_surface_image_{side}" for img in imgs for side in ['left','right'] ] # order of left/right is important for self.original
     
     #TODO assign total surface images to each instance
     total_imgs_per_exp:int = None
@@ -912,14 +911,14 @@ class SurfaceImage(Entry):
             # we have all expected left/right pairs of images
             # hits is sorted by creation time, so we just have to work out which pair
             # matches this entry (self), then grab the left or right image from the pair
-            img_idx0 = self.descriptors.index(self.descriptive_name)
+            img_idx0 = self.lims_upload_labels.index(self.descriptive_name)
             #decsriptors are in order left, then right - return right or left of a pair
             img_idx1 = img_idx0 - 1 if img_idx0%2 else img_idx0 + 1
             return hits[img_idx0] if self.side in hits[img_idx0].name else hits[img_idx1]
         
         if len(hits) == 0.5*self.total_imgs_per_exp and right_labels_only or lefts_labels_only:
             # we have only the left or the right image for each pair
-            img_idx = self.descriptors.index(self.descriptive_name)//2
+            img_idx = self.lims_upload_labels.index(self.descriptive_name)//2
             # regardless of which self.side this entry is, we have no choice but to
             # return the image that we have (relabeled inaccurately as the other side in half the cases)
             return hits[img_idx]
@@ -927,7 +926,7 @@ class SurfaceImage(Entry):
         
 # --------------------------------------------------------------------------------------
 class NewscaleLog(Entry):
-    descriptors = ['newstep_csv']
+    lims_upload_labels = ['newstep_csv']
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)   
         self.source = self.platform_json.src_motor_locs
@@ -960,7 +959,7 @@ class NewscaleLog(Entry):
     
 # --------------------------------------------------------------------------------------
 class Notebook(Entry):
-    descriptors = [
+    lims_upload_labels = [
                 'area_classifications',
                 'fiducial_image',
                 'overlay_image',
@@ -978,7 +977,7 @@ class Notebook(Entry):
         
 # --------------------------------------------------------------------------------------
 class Surgery(Entry):
-    descriptors = ['surgery_notes','post_removal_surgery_image','final_surgery_image']
+    lims_upload_labels = ['surgery_notes','post_removal_surgery_image','final_surgery_image']
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)   
     
@@ -1162,7 +1161,7 @@ class Files(PlatformJson):
     def entry_from_factory(self, entry:Union[Dict,Tuple]) -> Entry:
         descriptive_name = Entry(entry,self).descriptive_name
         for entry_class in Entry.__subclasses__():
-            if descriptive_name in entry_class.descriptors:
+            if descriptive_name in entry_class.lims_upload_labels:
                 return entry_class(entry,self)
         raise ValueError(f"{descriptive_name} is not a recognized platform.json[files] entry-type")
     

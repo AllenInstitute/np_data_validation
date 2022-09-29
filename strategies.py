@@ -58,6 +58,15 @@ from typing import List, Set, Union
 # if TYPE_CHECKING:
 import data_validation as dv
 
+def copy_file(
+    source: Union[str, pathlib.Path],
+    destination: Union[str, pathlib.Path]):
+    """
+    Copy a file to a destination.
+    """
+    status = dv.DataValidationStatus(path=source)
+    status.copy(destination,validate=True)
+
 def generate_checksum(
     subject: dv.DataValidationFile, db: dv.DataValidationDB
 ) -> dv.DataValidationFile:

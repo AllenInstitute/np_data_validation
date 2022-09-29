@@ -3097,7 +3097,19 @@ class DataValidationFolder:
                 and any(filters in child.name for filters in self.filename_filters)
             ]
         return self._file_paths
-
+    
+    def copy_to_backup(self, backup_path: pathlib.Path=NPEXP_PATH):
+        """Copy all files to a backup location"""
+        # create threads for each file
+        threads = []
+        for path in self.file_paths:
+            t = threading.Thread(target=strategies.copy_file, args=(path, backup_path))
+            t.start()
+        # wait for the threads to complete
+        print(f"- copying files to {backup_path}...")
+        for thread in progressbar(threads, prefix=" ", units="files", size=25):
+            thread.join()
+        
     def add_to_db(self):
         "Add all files in folder to database if they don't already exist"
 

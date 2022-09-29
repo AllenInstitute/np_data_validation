@@ -88,7 +88,7 @@ def generate_checksum_if_not_in_db(
     """
     If the database has no entry for the subject file, generate a checksum for it.
     """
-    accepted_matches = subject.SELVES
+    accepted_matches = [subject.Match.SELF_MISSING_SELF]
     matches = db.get_matches(subject, match=accepted_matches)
     if not matches:
         generate_checksum(subject, db)

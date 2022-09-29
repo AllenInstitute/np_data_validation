@@ -135,6 +135,7 @@ import nptk  # utilities for np rigs and data
 import strategies  # for interacting with database
 
 NPEXP_PATH = pathlib.Path("//allen/programs/mindscope/workgroups/np-exp")
+INCOMING_PATH = pathlib.Path("//allen/programs/braintv/production/incoming/neuralcoding")
 
 # setup logging ------------------------------------------------------------------------
 # LOG_DIR = fR"//allen/programs/mindscope/workgroups/np-exp/ben/data_validation/logs/"
@@ -745,6 +746,10 @@ class SessionFile:
             return self.session_relative_path < other.session_relative_path
         return self.session.id < other.session.id
 
+    @property
+    def incoming_path(self) -> pathlib.Path:
+        """Path to file in incoming folder (may not exist)"""
+        return INCOMING_PATH / self.relative_path
 
 class DataValidationFile(abc.ABC):
     """Represents a file to be validated
@@ -2794,7 +2799,38 @@ class DataValidationStatus:
                 ]
             )
         )
+        
+    @property
+    def incoming(self) -> List[DataValidationFile]:
+        """Any matches from database that are at the correct incoming path and currently
+        exist"""
+        # non-session files won't have the relevant path property
+        # and should never be in incoming anyway
+        if not isinstance(self.file, SessionFile):
+            return []
+        incoming = self.db.DVFile(self.file.incoming_path)
+        if not incoming.path.exists():
+            return []
+        return list(
+            set(
+                [
+                    match
+                    for s in self.selves
+                    for match in self.matches
+                    if incoming.compare(match) in DataValidationFile.SELVES
+                ]
+            )
+        )
 
+    @property
+    def valid_incoming(self) -> List[DataValidationFile]:
+        return [
+                valid 
+                for valid in self.incoming
+                for s in self.selves
+                if s.compare(valid) in DataValidationFile.VALID_COPIES
+            ]
+        
     @property
     def match_types(self) -> List[int]:
         """return a list of match types for the file"""

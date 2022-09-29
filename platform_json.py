@@ -1215,11 +1215,11 @@ class Files(PlatformJson):
  
     @property
     def correct_data_ready(self) -> bool:
-        return (
-            all([e.correct_data for e in self.entries_corrected]) 
-            and 
-            all([expected in self.dict_corrected.items() for expected in self.dict_expected.items()])
-        ) if self.entries_corrected else False
+        if self.entries_corrected:
+            return all([e.correct_data for e in self.entries_corrected]) 
+        else:
+            return all([e.correct_data for e in self.entries_expected]) 
+        return False
 
 
     def fix_data(self):

@@ -404,8 +404,9 @@ class PlatformJson(SessionFile):
         this mouse (mouse/day from platform json). 
         
         Not all mice have foraging IDs (e.g. variability project)"""
-        from_mtrain = self.mtrain_session['id']
-        return from_mtrain 
+        if self.mtrain_session:
+            return self.mtrain_session['id']
+        return None
     
     @property
     def foraging_id_lims(self) -> str:
@@ -413,18 +414,29 @@ class PlatformJson(SessionFile):
         (from platform json), obtained from the behavior session that ran at the time. 
         
         Not all mice have foraging IDs (e.g. variability project)"""
-        from_lims = dg.get_foraging_id_from_behavior_session(
-            self.session.mouse,
-            self.exp_start,
-            self.exp_end,
-        )
-        return from_lims if from_lims else None 
+        try:
+            from_lims = dg.get_foraging_id_from_behavior_session(
+                self.session.mouse,
+                self.exp_start,
+                self.exp_end,
+            )
+            from_lims = dg.get_foraging_id_from_behavior_session(
+                "366122",
+                self.exp_start,
+                self.exp_end,
+            )
+        except dg.MultipleBehaviorSessionsError:
+            from_lims = None
+        except dg.NoBehaviorSessionError:
+            from_lims = None
+    
+        return from_lims
     
     @property
     def foraging_id(self):
         """Final foraging ID to use in platform json - currently using ID from 
-        behavior session in lims"""
-        return self.foraging_id_lims
+        behavior session in lims if available, then mtrain, platform json itself"""
+        return self.foraging_id_lims or self.foraging_id_mtrain or self.foraging_id_contents
     # - ------------------------------------------------------------------------------------ #
     
     @property

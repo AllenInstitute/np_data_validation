@@ -420,11 +420,6 @@ class PlatformJson(SessionFile):
                 self.exp_start,
                 self.exp_end,
             )
-            from_lims = dg.get_foraging_id_from_behavior_session(
-                "366122",
-                self.exp_start,
-                self.exp_end,
-            )
         except dg.MultipleBehaviorSessionsError:
             from_lims = None
         except dg.NoBehaviorSessionError:

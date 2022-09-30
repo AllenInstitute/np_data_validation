@@ -390,9 +390,9 @@ class PlatformJson(SessionFile):
         Not all mice have foraging IDs (e.g. variability project)"""
         
         from_field = self.contents.get('foraging_id', None)
-        foraging_id = contains_foraging_id(from_field)
-        if foraging_id:
-            return foraging_id
+        if from_field:
+            if foraging_id := contains_foraging_id(from_field):
+                return foraging_id
         
         from_list = [contains_foraging_id(s) for s in self.contents.get('foraging_id_list', [])]
         if len(from_list) == 1:

@@ -377,7 +377,7 @@ class PlatformJson(SessionFile):
     # foraging id
     # -------------------------------------------------------------------------- #
     # there are few ways to get the foraging id - it's currently written into the
-    # platform json file by the WSE, but may be incorrect (DR experiments create a new
+    # platform json file y the WSE, but may be incorrect (DR experiments create a new
     # foraging id that the WSE isn't aware of) or missing (variability project).
     # Functions here find the foraging id in a variety of ways - we'll just choose one
     # to use.
@@ -797,7 +797,7 @@ class Camstim(Entry):
     def origin(self) -> pathlib.Path:
         hits = []
         
-        # behavior ----------------------------------------------------------------------------- #
+        # visual ----------------------------------------------------------------------------- #
         if self.descriptive_label == 'visual':
         
             # When all processing completes, camstim Agent class passes data and uuid to

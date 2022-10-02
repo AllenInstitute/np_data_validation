@@ -679,9 +679,14 @@ class SessionFile:
 
         # for files in 'job_id' folders we'll need to glob and take the most recent file
         # version (assuming this == highest job id)
-        pattern = f"*{self.root_relative_path.as_posix()}"
+        pattern = f"*/{self.root_relative_path.as_posix()}"
         matches = [
-            m.as_posix() for m in self.session.lims_path.rglob(pattern)
+            m.as_posix() for m in self.session.lims_path.glob(pattern)
+        ]  # convert to strings for sorting
+        if not matches: # try searching one subfolder deeper
+            pattern = "*/" + pattern
+        matches = [
+            m.as_posix() for m in self.session.lims_path.glob(pattern)
         ]  # convert to strings for sorting
         if matches and self.probe_dir:
             matches = [m for m in matches if f"_probe{self.probe_dir}" in m]

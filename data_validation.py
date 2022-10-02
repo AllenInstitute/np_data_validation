@@ -1680,23 +1680,18 @@ class MongoDataValidationDB(DataValidationDB):
         elif isinstance(file, OrphanedDVFile):
             # for non-SessionFile DVFile objects, we want to find all matches possible
             if file.path:
-                entries += list(
+                entries = list(
                     cls.db.find(
-                        {"path": file.path.as_posix()},
+                        {"$or":[
+                            {"path": file.path.as_posix()},
+                            {"checksum": file.checksum},
+                        ]}
                     )
-                )
-            if file.checksum:
-                entries += list(
-                    cls.db.find(
-                        {
-                            "checksum": file.checksum,
-                        },
-                    ),
                 )
             # TODO consolidate path+checksum query into one that finds either, then
             # if none returned find size matches separately
-            if file.size:
-                entries += list(
+            if not entries and file.size is not None:
+                entries = list(
                     cls.db.find(
                         {"size": file.size},
                     ),

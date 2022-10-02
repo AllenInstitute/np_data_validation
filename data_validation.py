@@ -2301,14 +2301,14 @@ class DataValidationStatus:
                 b
                 for b in s_m
                 if isinstance(b, SessionFile)
-                and b.path == b.get_lims_path()
+                and b.path == b._lims_backup
                 and self.file.compare(b) in b.VALID_COPIES
             ]
             if not backup_from_matches:
                 backup_from_matches = [
                     b
                     for b in s_m
-                    if b.path == b.get_lims_path()
+                    if b.path == b._lims_backup
                     and self.file.compare(b) in b.UNCONFIRMED_COPIES
                 ]
             # get checksummed matches for backup file
@@ -2341,7 +2341,7 @@ class DataValidationStatus:
             backup_from_matches = [
                 b
                 for b in s_m
-                if (b.path == b.get_z_drive_path() or "neuropixels_data" in str(b.path))
+                if (b.path == b._z_drive_backup or "neuropixels_data" in str(b.path))
                 and self.file.compare(b) in b.VALID_COPIES
             ]
             if not backup_from_matches:
@@ -2349,7 +2349,7 @@ class DataValidationStatus:
                     b
                     for b in s_m
                     if (
-                        b.path == b.get_z_drive_path()
+                        b.path == b._z_drive_backup
                         or "neuropixels_data" in str(b.path)
                     )
                     and self.file.compare(b) in b.UNCONFIRMED_COPIES

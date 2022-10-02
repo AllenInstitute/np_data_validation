@@ -2604,7 +2604,21 @@ class DataValidationStatus:
             except OSError as e:
                 logging.exception(f"Failed to remove {self.file} file after copy: {e}")
 
-    def ensure_checksum(self):
+    def ensure_npexp_backup(self):
+        if not isinstance(self.file, SessionFile):
+            # TODO we can work out the session for orphan files too 
+            return
+        if self.file.session.npexp_path.as_posix() in self.file.path.as_posix():
+            return
+        if not self.file.npexp_backup:
+            self.copy(validate=True, recopy=False)
+        # could use recopy=True 
+        if self.status == self.Backup.HAS_UNCONFIRMED_BACKUP:
+            self.ensure_backup_checksum()
+        if not self.status == self.Backup.HAS_VALID_BACKUP:
+            logging.info(f"Still no valid backups for: {self.file}")
+            
+    def ensure_backup_checksum(self):
         if not self.valid_backups or not self.unconfirmed_backups:
             # * note: it's possible to have the same entry in valid_backups
             #  and unconfirmed_backups:
@@ -2659,6 +2673,10 @@ class DataValidationStatus:
         if self.valid_backups:
             pass
 
+    @property
+    def status(self) -> Backup:
+        return self.report()
+    
     def report(self):
         if not self.matches:
             return self.Backup.NO_MATCHES_IN_DB
@@ -3098,12 +3116,28 @@ class DataValidationFolder:
             ]
         return self._file_paths
     
+    def copy_to_npexp(self):
+        """Copy all files to the NP-EXP folder"""
+        # create threads for each file
+        def copy(path):
+            DataValidationStatus(path).ensure_npexp_backup()
+            
+        threads = []
+        for path in self.file_paths:
+            t = threading.Thread(target=copy, args=(path,))
+            threads.append(t)
+            t.start()
+        # wait for the threads to complete
+        for thread in progressbar(threads, prefix=" ", units="files", size=25):
+            thread.join()
+    
     def copy_to_backup(self, backup_path: pathlib.Path=NPEXP_PATH):
         """Copy all files to a backup location"""
         # create threads for each file
         threads = []
         for path in self.file_paths:
             t = threading.Thread(target=strategies.copy_file, args=(path, backup_path))
+            threads.append(t)
             t.start()
         # wait for the threads to complete
         print(f"- copying files to {backup_path}...")

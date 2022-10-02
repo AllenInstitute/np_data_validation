@@ -1,5 +1,12 @@
-import data_validation as dv
+import configparser
+import os
 import pathlib
+import pprint
+import sys
+import threading
+
+import data_validation as dv
+import strategies
 
 # for folder in pathlib.Path("D:/").iterdir():
 #     if folder.is_dir() and dv.Session.folder(folder.name):
@@ -10,16 +17,7 @@ import pathlib
 
 
 
-import configparser
-import logging
-import os
-import pathlib
-import pprint
-import sys
-import threading
 
-import data_validation as dv
-import strategies
 
 CONFIG_FILE = "clear_dirs.cfg" # should live in the same cwd as clear_dirs.py
 DB = dv.MongoDataValidationDB()
@@ -130,10 +128,13 @@ def move_session_folders_to_npexp():
             continue
         
         print(f"{divider}Copying {F.path} to np-exp")
-        F.copy_to_backup()
-        print(f"{divider}Clearing {F.path}")
-        F.clear()
+        F.copy_to_npexp()
         
+        print(f"\nClearing {F.path}")
+        deleted_bytes = F.clear()
+
+        total_deleted_bytes += deleted_bytes
+
     print(
         f"{divider}Finished clearing session folders.\n{len(total_deleted_bytes)} files deleted | {sum(total_deleted_bytes) / 1024**3 :.1f} GB recovered\n"
     )

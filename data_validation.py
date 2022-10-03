@@ -173,7 +173,7 @@ logging.basicConfig(
 mongo_local_client: pymongo.MongoClient = pymongo.MongoClient(
     "mongodb://10.128.50.77:27017/",
     serverSelectionTimeoutMS=2000,  # default 30s
-    maxPoolSize=0,  # default 100
+    maxPoolSize=1,  # default 100
 )
 
 # backup cloud location

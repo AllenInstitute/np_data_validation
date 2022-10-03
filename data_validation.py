@@ -2613,13 +2613,14 @@ class DataValidationStatus:
         if not self.file.npexp_backup:
             self.copy(validate=True, recopy=False)
         # could use recopy=True 
-        if self.status == self.Backup.HAS_UNCONFIRMED_BACKUP:
+        if self.status != self.Backup.HAS_POSSIBLE_UNSYNCED_BACKUP:
             self.ensure_backup_checksum()
         if not self.status == self.Backup.HAS_VALID_BACKUP:
             logging.info(f"Still no valid backups for: {self.file}")
             
     def ensure_backup_checksum(self):
-        if not self.valid_backups or not self.unconfirmed_backups:
+        if self.valid_backups or not self.unconfirmed_backups:
+            # skip if there's nothing to checksum
             # * note: it's possible to have the same entry in valid_backups
             #  and unconfirmed_backups:
             #  since we evaluate all entries in self.selves vs all entries in

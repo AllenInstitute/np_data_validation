@@ -1,4 +1,5 @@
 import configparser
+import logging
 import os
 import pathlib
 import pprint
@@ -109,9 +110,10 @@ def move_session_folders_to_npexp():
     exhaustive_search = config["options"].getboolean(
         "exhaustive_search", fallback=False
     )
-    # logging.getLogger().setLevel(
-    #     config["options"].getint("logging_level", fallback=20)
-    # )
+    logging.getLogger().setLevel(
+        config["options"].get("logging_level", fallback="INFO")
+    )
+
 
     total_deleted_bytes = []  # keep a tally of space recovered
     print("Checking:")

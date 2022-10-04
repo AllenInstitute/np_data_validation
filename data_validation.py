@@ -1104,7 +1104,7 @@ class DataValidationFile(abc.ABC):
         except OSError:
             pass
 
-        if samefile or (
+        if samefile or self is other or hash(self) == hash(other) or (
             self.checksum
             and other.checksum
             and (self.checksum == other.checksum)

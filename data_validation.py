@@ -1104,7 +1104,7 @@ class DataValidationFile(abc.ABC):
         except OSError:
             pass
 
-        if samefile or self is other or hash(self) == hash(other) or (
+        if self is other or hash(self) == hash(other) or (
             self.checksum
             and other.checksum
             and (self.checksum == other.checksum)
@@ -1164,9 +1164,12 @@ class DataValidationFile(abc.ABC):
                     and self.checksum_name == other.checksum_name
                 )
             )
-            and (self.path.as_posix().lower() == other.path.as_posix().lower())
-            and samefile is not True
-        ):  # and old entry for the same file path
+            and (
+                self.path.as_posix().lower() == other.path.as_posix().lower()
+                or samefile is True
+            )
+            and samefile is not False
+        ):  # an old entry for the same file path
             return self.__class__.Match.SELF_PREVIOUS_VERSION
 
         elif (

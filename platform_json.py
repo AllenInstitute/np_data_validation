@@ -1080,6 +1080,17 @@ class Files(PlatformJson):
             json.dump(dict(contents), f, indent=4)
         print(f"updated {self.path.name}")
                     
+    def push_from_npexp(self):
+        if NPEXP_PATH not in self.path.parents:
+            raise ValueError("platform json should be on np-exp first")
+        if len(list(self.path.parent.glob("*_platform*.json"))) > 1:
+            raise ValueError("session folder contains multiple platform jsons: lims will ingest data specified in all of them once triggered - ensure they're correct")
+
+        # write a trigger file to incoming/trigger --------------------------------------------- #
+        with open(INCOMING_ROOT / 'trigger' / f"{self.session.id}.ecp", 'w') as f:
+            f.writelines('sessionid: ' + self.session.id + "\n")
+            f.writelines("location: '" + self.session.npexp_path.as_posix() + "'")
+    
 def get_created_timestamp_from_file(file:Union[str, pathlib.Path]):
     timestamp = pathlib.Path(file).stat().st_ctime
     return datetime.datetime.fromtimestamp(timestamp)

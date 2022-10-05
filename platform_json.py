@@ -428,11 +428,19 @@ class PlatformJson(SessionFile):
     
         return from_lims
     
+    @property 
+    def foraging_id_pkl(self) -> str:
+        matches = get_files_created_between(self.src_pkl, strsearch="*.pkl", start=self.exp_start, end=self.exp_end)
+        for match in matches:
+            if foraging_id := contains_foraging_id(match.as_posix()):
+                return foraging_id
+        
     @property
     def foraging_id(self):
         """Final foraging ID to use in platform json - currently using ID from 
         behavior session in lims if available, then mtrain, platform json itself"""
-        return self.foraging_id_lims or self.foraging_id_mtrain or self.foraging_id_contents
+        return self.foraging_id_lims or self.foraging_id_mtrain or self.foraging_id_pkl or self.foraging_id_contents
+    
     # - ------------------------------------------------------------------------------------ #
     
     @property

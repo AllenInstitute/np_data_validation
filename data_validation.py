@@ -2636,6 +2636,11 @@ class DataValidationStatus:
         if not isinstance(self.file, SessionFile):
             # TODO we can work out the session for orphan files too 
             return
+        if (
+            self.report() == self.Backup.HAS_VALID_BACKUP
+            and any(b.path == self.file.lims_backup for b in self.backups)
+        ): # TODO update report() to return VALID IN LIMS
+            return
         if self.file.session.npexp_path.as_posix() in self.file.path.as_posix():
             return
         if not self.file.npexp_backup:

@@ -44,7 +44,7 @@ class MTrain:
                 raise ValueError("Mouse ID can only be set once per instance.")
             self._mouse_id = str(value)
         else:
-            raise ValueError(f"Mouse ID {value} not found in MTrain")
+            raise MouseNotInMTrainError(f"Mouse ID {value} not found in MTrain")
 
     @property
     def state(self) -> dict:

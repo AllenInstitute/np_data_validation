@@ -2566,7 +2566,10 @@ class DataValidationStatus:
                         self.file = s
                         break
             if not self.file.checksum:
-                self.file = dest_file.__class__(path=self.file.path)
+                try:
+                    self.file = dest_file.__class__(path=self.file.path)
+                except SessionError:
+                    self.file = OrphanedDVFile(path=self.file.path, type=dest_file.checksum_name)
                 self.file = strategies.generate_checksum(self.file, self.db)
 
             if self.file.compare(dest_file) in self.file.VALID_COPIES:

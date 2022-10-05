@@ -251,7 +251,7 @@ class PlatformJson(SessionFile):
 # depending on the data type of each entry, the method to find the corresponding
 # original data files will be quite different
 # - from each entry in platform.json "files" field we create an Entry object of a
-#   specific subtype, using the factory method below e.g. entry_from_factory(self, entry)
+#   specific subtype, using the factory method below e.g. entry_from_dict(self, entry)
 
 class Entry:
         
@@ -301,7 +301,7 @@ class Entry:
     @property
     def correct_dict(self) -> bool:
         return self.__dict__() == self.__dict__()
-        # return self in [self.platform_json.entry_from_factory(entry) for entry in self.platform_json.expected.items()]
+        # return self in [self.platform_json.entry_from_dict(entry) for entry in self.platform_json.expected.items()]
     
     @property
     def correct_data(self) -> bool:
@@ -527,7 +527,7 @@ class Sync(Entry):
         if hits:
             return return_single_hit(hits)
        
-        # try again with differnt search
+        # try again with different search
         glob = f"*{self.platform_json.session.folder}*.sync"
         start = self.platform_json.exp_start
         end = self.platform_json.exp_end + datetime.timedelta(minutes=30)
@@ -587,7 +587,7 @@ class Camstim(Entry):
             if foraging_pkl := return_single_hit(list(self.source.glob(f"*{self.platform_json.foraging_id_contents}*.pkl"))):
                 return foraging_pkl
             
-            # otherwise, we can search for any pkl created during the timeframe of the
+            # otherwise, we can search for any pkl created during the timeframe of the experiment
             # and check whether it has a foraging ID in its name
             glob = ("*.pkl")
             matches = get_files_created_between(self.source,glob,self.platform_json.exp_start,self.platform_json.exp_end)
@@ -946,23 +946,35 @@ class Files(PlatformJson):
     def dict_corrected(self) -> dict:
         return {k:v for e in self.entries_corrected for k,v in e.__dict__().items()} if self.entries_corrected else {}
     
+    @property
+    def dict_folder(self) -> dict:
+        return {k:v for e in self.entries_current for k,v in e.__dict__().items()} if self.entries_current else {}
+    
     
     # Entry lists match dict entries to files and functions for finding/copying data ------- #
    
-    def entry_from_factory(self, entry:Union[Dict,Tuple]) -> Entry:
+    def entry_from_dict(self, entry:Union[Dict,Tuple]) -> Entry:
         descriptive_name = Entry(entry,self).descriptive_name
         for entry_class in Entry.__subclasses__():
             if descriptive_name in entry_class.lims_upload_labels:
                 return entry_class(entry,self)
         raise ValueError(f"{descriptive_name} is not a recognized platform.json[files] entry-type")
     
+    def entry_from_file(self, path:Union[str,pathlib.Path]) -> Entry:
+        path = pathlib.Path(path)
+        for entry in self.dict_expected.items():
+            dir_or_file_name = list(entry[1].values())[0]
+            if dir_or_file_name == path.name:
+                return self.entry_from_dict(entry)
+        
     @property
     def entries_current(self) -> List[Entry]:
-        return [self.entry_from_factory(entry) for entry in self.dict_current.items()]
+        return ([entry for entry in [self.entry_from_dict(item) for item in self.dict_current.items()]
+            + [self.entry_from_file(path) for path in self.path.parent.iterdir()] if entry])
     
     @property
     def entries_expected(self) -> List[Entry]:
-        return [self.entry_from_factory(entry) for entry in self.dict_expected.items()]
+        return [self.entry_from_dict(entry) for entry in self.dict_expected.items()]
     
     @property
     def entries_missing(self) -> List[Entry]:
@@ -1056,7 +1068,7 @@ class Files(PlatformJson):
                 - find entries that don't match template 
                 - decide whether to delete their data"""
                 
-        extra = [self.entry_from_factory({k:v}) for k,v in self.dict_extra.items()]
+        extra = [self.entry_from_dict({k:v}) for k,v in self.dict_extra.items()]
         for entry in extra:
             if entry.actual_data.exists():
                 self.entries_corrected.append(entry)
@@ -1072,14 +1084,15 @@ class Files(PlatformJson):
         contents = self.contents # must copy contents to avoid breaking class property (Which pulls from .json)
         
         # update entries
-        contents['files'] = {**self.dict_corrected}
+        contents['files'] = {**self.dict_corrected} or {**self.dict_folder}
         contents['project'] = self.session.project
-        contents['foraging_id'] = self.foraging_id
+        if self.foraging_id:
+            contents['foraging_id'] = self.foraging_id
         
         with self.path.open('w') as f:
             json.dump(dict(contents), f, indent=4)
         print(f"updated {self.path.name}")
-                    
+
     def push_from_npexp(self):
         if NPEXP_PATH not in self.path.parents:
             raise ValueError("platform json should be on np-exp first")

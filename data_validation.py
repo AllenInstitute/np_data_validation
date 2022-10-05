@@ -128,8 +128,8 @@ try:
     import pymongo
 except ImportError:
     print("pymongo not installed")
+import requests
 
-import timing
 import data_getters as dg  # from corbett's QC repo
 import nptk  # utilities for np rigs and data
 import strategies  # for interacting with database
@@ -479,7 +479,29 @@ class Session:
                 )
                 self._lims_path = None
         return self._lims_path
-
+    
+    @property
+    def lims_session_json(self) -> dict:
+        """Content from lims on ecephys_session
+        
+        This property getter just prevents repeat calls to lims
+        """
+        if not hasattr(self, '_lims_session_json') or self._lims_session_json is None:
+            self._lims_session_json = self.get_lims_content()
+        return self._lims_session_json
+    
+    def get_lims_content(self) -> dict:
+        response = requests.get(f"http://lims2/behavior_sessions/{self.id}.json?")
+        if response.status_code == 404:
+            response = requests.get(f"http://lims2/ecephys_sessions/{self.id}.json?")
+        elif response.status_code != 200:
+            raise requests.RequestException(f"Could not find content for session {self.id} in LIMS")
+        
+        return response.json()
+        
+    @property
+    def project(self) -> str:
+        return self.lims_session_json['project']['code']
 
 class SessionFile:
     """Represents a single file belonging to a neuropixels ecephys session"""

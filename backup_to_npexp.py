@@ -128,6 +128,8 @@ def move_session_folders_to_npexp():
             continue
         if not F.file_paths:
             continue
+        F.min_age_days = min_age_days
+        F.regenerate_threshold_bytes = regenerate_threshold_bytes
         
         print(f"{divider}Copying {F.path} to np-exp")
         F.copy_to_npexp()

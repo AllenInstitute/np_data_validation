@@ -128,6 +128,8 @@ try:
     import pymongo
 except ImportError:
     print("pymongo not installed")
+import certifi
+import certifi
 import requests
 
 import data_getters as dg  # from corbett's QC repo
@@ -192,6 +194,7 @@ mongo_cloud_client: pymongo.MongoClient = pymongo.MongoClient(
     tls=True,
     tlsCertificateKeyFile=mgc.as_posix() if mgc.exists() else mgc_bkup().as_posix(),
     maxPoolSize=100,  # 500 max on free plan -default 100
+    tlsCAFile=certifi.where(),
 )
 
 for client in [mongo_cloud_client]:  # mongo_local_client

@@ -2663,7 +2663,6 @@ class DataValidationStatus:
             return
         if self.file.session.npexp_path.as_posix() in self.file.path.as_posix():
             return
-        if not self.file.npexp_backup:
         self.copy(validate=True, recopy=False)
         # could use recopy=True 
         if self.status != self.Backup.HAS_POSSIBLE_UNSYNCED_BACKUP:

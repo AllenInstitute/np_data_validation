@@ -660,34 +660,47 @@ class SessionFile:
 
     # backup paths below are only returned if they exist and are not the same as the
     # current file path (ie. if the file is not already in a backup location) -------------- #
+    @property
+    def npexp_path(self) -> pathlib.Path:
+        """Expected path to a copy on npexp, regardless of whether or not it exists.
+        """
+        # for symmetry with other paths/backups add the 'cached' property, tho it's not
+        # necessary
+        self._npexp_path = self.session.NPEXP_ROOT / self.session_relative_path
+        return self._npexp_path
 
     @property
     def npexp_backup(self) -> pathlib.Path:
-        """Actual path to backup on npexp if it currently exists"""
-        # unlike the properties below this function does negligible computation - no need to 'cache' it
+        """Actual path to backup on npexp if it currently exists, and isn't our current
+        file, and our current file isn't on lims"""
         if (
-            self.get_npexp_path()
-            and self.get_npexp_path().exists()
-            and self.get_npexp_path() != self.path
+            self.npexp_path
+            and self.npexp_path.exists()
+            and self.npexp_path != self.path
+            and self.session.lims_path not in self.path.parents
         ):
-            return self.get_npexp_path()
+            return self.npexp_path
         return None
 
-    def get_npexp_path(self) -> pathlib.Path:
-        """Presumed path to file on npexp (may not exist)"""
-        return self.session.NPEXP_ROOT / self.session_relative_path
+    @property
+    def lims_path(self) -> pathlib.Path:
+        """Expected path to a copy on lims, regardless of whether or not it exists.
 
+        This property getter just prevents repeat calls to find the path.
+        """
+        if not hasattr(self, "_lims_path"):
+            self._lims_path = self.get_lims_path()
+        return self._lims_path
+    
     @property
     def lims_backup(self) -> pathlib.Path:
         """Actual path to backup on LIMS if it currently exists"""
-        if not hasattr(self, "_lims_backup"):
-            self._lims_backup = self.get_lims_path()
         if (
-            self._lims_backup
-            and self._lims_backup.exists()
-            and self._lims_backup.as_posix() != self.path.as_posix()
+            self.lims_path
+            and self.lims_path.exists()
+            and self.lims_path.as_posix() != self.path.as_posix()
         ):
-            return self._lims_backup
+            return self.lims_path
         return None
 
     def get_lims_path(self) -> pathlib.Path:
@@ -715,26 +728,32 @@ class SessionFile:
         if not matches:
             return None
         return pathlib.Path(sorted(matches)[-1])
+    @property
+    def z_drive_path(self) -> pathlib.Path:
+        """Expected path to a copy on 'z' drive, regardless of whether or not it exists.
 
+        This property getter just prevents repeat calls to find the path.
+        """
+        if not hasattr(self, "_z_drive_path"):
+            self._z_drive_path = self.get_z_drive_path()
+        return self._z_drive_path
+    
     @property
     def z_drive_backup(self) -> pathlib.Path:
-        """Path to backup on 'z' drive if it currently exists.
-
-        This property getter just prevents repeat calls to find the path
+        """Path to backup on 'z' drive if it currently exists, also considering the
+        location of the current file (e.g. if file is on npexp, z drive is not a backup).
         """
-        if not hasattr(self, "_z_drive_backup"):
-            self._z_drive_backup = self.get_z_drive_path()
         if (
-            self._z_drive_backup
-            and self._z_drive_backup.exists()
-            and self._z_drive_backup.as_posix() != self.path.as_posix()
+            self.z_drive_path
+            and self.z_drive_path.exists()
+            and self.z_drive_path.as_posix() != self.path.as_posix()
             and "neuropixels_data" not in self.path.parts
-            and self.path
-            != self.get_npexp_path()  # if file is on npexp, don't consider z drive as a backup
-            and self.path
-            != self._lims_backup  # if file is on lims, don't consider z drive as a backup
+            and self.path != self.npexp_path
+            # if file is on npexp, don't consider z drive as a backup
+            and self.session.lims_path not in self.path.parents
+            # if file is on lims, don't consider z drive as a backup
         ):
-            return self._z_drive_backup
+            return self.z_drive_path
         return None
 
     def get_z_drive_path(self) -> pathlib.Path:
@@ -2282,7 +2301,7 @@ class DataValidationStatus:
 
                 if (
                     attr == "npexp_backup"
-                    and self.file.path == self.file.get_npexp_path()
+                    and self.file.path == self.file.npexp_path
                 ):
                     # no point checking for npexp or z drive backups if the file is in
                     # its correct session folder on npexp already
@@ -2326,14 +2345,15 @@ class DataValidationStatus:
                 b
                 for b in s_m
                 if isinstance(b, SessionFile)
-                and b.path == b._lims_backup
+                and b.path == b.lims_path
                 and self.file.compare(b) in b.VALID_COPIES
             ]
             if not backup_from_matches:
                 backup_from_matches = [
                     b
                     for b in s_m
-                    if b.path == b._lims_backup
+                    if isinstance(b, SessionFile)
+                    and b.path == b.lims_path
                     and self.file.compare(b) in b.UNCONFIRMED_COPIES
                 ]
             # get checksummed matches for backup file
@@ -2348,14 +2368,14 @@ class DataValidationStatus:
             backup_from_matches = [
                 b
                 for b in s_m
-                if b.path == b.get_npexp_path()
+                if b.path == b.npexp_path
                 and self.file.compare(b) in b.VALID_COPIES
             ]
             if not backup_from_matches:
                 backup_from_matches = [
                     b
                     for b in s_m
-                    if b.path == b.get_npexp_path()
+                    if b.path == b.npexp_path
                     and self.file.compare(b) in b.UNCONFIRMED_COPIES
                 ]
             # get checksummed matches for backup file
@@ -2366,7 +2386,7 @@ class DataValidationStatus:
             backup_from_matches = [
                 b
                 for b in s_m
-                if (b.path == b._z_drive_backup or "neuropixels_data" in str(b.path))
+                if (b.path == b.z_drive_path or "neuropixels_data" in str(b.path))
                 and self.file.compare(b) in b.VALID_COPIES
             ]
             if not backup_from_matches:
@@ -2374,7 +2394,7 @@ class DataValidationStatus:
                     b
                     for b in s_m
                     if (
-                        b.path == b._z_drive_backup
+                        b.path == b.z_drive_path
                         or "neuropixels_data" in str(b.path)
                     )
                     and self.file.compare(b) in b.UNCONFIRMED_COPIES

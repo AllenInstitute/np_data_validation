@@ -425,12 +425,9 @@ class Session:
 
     @classmethod
     def folder(cls, path: Union[str, pathlib.Path]) -> Union[str, None]:
-        """Extract [10-digit session ID]_[6-digit mouse ID]_[6-digit date
+        """Extract [8+digit session ID]_[6-digit mouse ID]_[6-digit date
         str] from a file or folder path"""
-
-        # identify a session based on
-        # [10-digit session ID]_[6-digit mouseID]_[6-digit date str]
-        session_reg_exp = r"[0-9]{,}_[0-9]{6}_[0-9]{8}"
+        session_reg_exp = r"[0-9]{8,}_[0-9]{6}_[0-9]{8}"
 
         session_folders = re.findall(session_reg_exp, str(path))
         if session_folders:

@@ -280,9 +280,6 @@ class Entry:
             elif self.descriptive_name == 'isi _registration_coordinates':
                 self.descriptive_name = 'isi_registration_coordinates'
         
-        # a presumed path to the data in the same folder as the platform json file
-        self.expected_data: pathlib.Path = self.platform_json.path.parent / self.platform_json.dict_expected[self.descriptive_name][self.dir_or_file_type]
-                
     def __eq__(self, other):
         # when comparing entries we want to know whether they have the same
         # descriptive name key and the same file/folder name
@@ -293,6 +290,15 @@ class Entry:
      
     def __str__(self):
         return self.dir_or_file_name
+    
+    @property
+    def suffix(self) -> str:
+        return self.dir_or_file_name.replace(self.platform_json.session.folder,'')
+
+    @property
+    def expected_data(self) -> pathlib.Path:
+        """Presumed path to the data in the same folder as the platform json file"""
+        return self.platform_json.path.parent / self.platform_json.dict_expected[self.descriptive_name][self.dir_or_file_type]
     
     @property
     def correct(self) -> bool:
@@ -308,7 +314,12 @@ class Entry:
     def correct_data(self) -> bool:
         # exists mainly to be overloaded by ephys entry
         return self.expected_data.exists()
-    
+    @property
+    def sd9(self):
+        sd9 = pathlib.Path("//10.128.54.19/sd9")
+        if sd9.exists() and self.platform_json.path.parent.exists():
+            return sd9 / self.platform_json.path.parent.name
+        return None
     @property
     def sources(self) -> List[pathlib.Path]:
         sources = []
@@ -329,6 +340,8 @@ class Entry:
             sources.append(self.npexp)    
         elif self.z.exists():
             sources.append(self.z)
+        elif self.sd9.exists():
+            sources.append(self.sd9)
         return sources
 
     @property
@@ -348,22 +361,16 @@ class Entry:
         
     @property
     def lims(self) -> Union[pathlib.Path,None]:
-        if not hasattr(self, '_lims'):
-            lims = self.platform_json.session.lims_session_json
-            if lims and lims.get("storage_directory",None):
-                session_dir = pathlib.Path(lims["storage_directory"])
-                if (session_dir / self.dir_or_file_name).exists():
-                    self._lims = session_dir / self.dir_or_file_name
-                elif f := list(session_dir.glob(f"*/*{self.dir_or_file_name}*")):
-                    self._lims = f[-1]
-                else:
-                    self._lims = None
-        return self._lims
+        if self.dir_or_file_type == 'filename':
+            return SessionFile(self.expected_data).lims_path
+        else:
+            raise NotImplementedError
     
     def rename():
         """Rename the current data in the same folder as the platform json file"""
         pass
-        # TODO 
+        # TODO
+        
     def copy(self, dest: Union[str, pathlib.Path]=None):
         """Copy original file to a specified destination folder"""
         # TODO add checksum of file/dir to db

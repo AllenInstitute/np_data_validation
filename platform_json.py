@@ -1195,7 +1195,14 @@ class Files(PlatformJson):
         print(f"updated {self.path.name}")
         
         
-class D2(Files):
+# class D2(Files):
+    # """ This doesn't really make sense - we don't need to open a platform D1 json to
+    # make this. But if we have the sorted data ready to go, we can push to lims from here"""
+    # def __init__(self,*args,**kwargs):
+    #     super().__init__(*args,**kwargs) 
+    
+    
+        
 def get_created_timestamp_from_file(file:Union[str, pathlib.Path]):
     timestamp = pathlib.Path(file).stat().st_ctime
     return datetime.datetime.fromtimestamp(timestamp)

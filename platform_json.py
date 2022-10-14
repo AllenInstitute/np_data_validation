@@ -927,7 +927,9 @@ class Files(PlatformJson):
                     print_staging_msg()
             else:
                 print("Files need to be found: try running obj.fix()")
-   
+        if self.dict_expected_d2 == self.dict_folder_d2:
+            print("All sorted probe folders are present (without info on validity):\n - Run obj.add_d2() to squash D2 upload into D1")
+    
     def remake_staging_folder(self):
         self.staging_folder.mkdir(parents=True,exist_ok=True)
         [p.unlink() for p in self.staging_folder.rglob('*') if p.is_symlink()]
@@ -1011,7 +1013,7 @@ class Files(PlatformJson):
     @property
     def entries_current(self) -> List[Entry]:
         return ([entry for entry in [self.entry_from_dict(item) for item in self.dict_current.items()]
-            + [self.entry_from_file(path) for path in self.path.parent.iterdir()] if entry])
+            + [self.entry_from_file(path) for path in self.path.parent.iterdir()] if entry and entry.correct_data])
     
     @property
     def entries_expected(self) -> List[Entry]:
@@ -1116,7 +1118,7 @@ class Files(PlatformJson):
                 continue
             print(f"{entry.descriptive_name} removed from platform.json: specified data does not exist {entry.dir_or_file_name} ")
 
-    def write(self):
+    def write(self, files: dict[str, dict[str, str]]=None):
         """Overwrite existing platform json, with a backup of the original preserved"""
         # ensure a backup of the original first
         shutil.copy2(self.path, self.backup) if not self.backup.exists() else None
@@ -1125,7 +1127,12 @@ class Files(PlatformJson):
         contents = self.contents # must copy contents to avoid breaking class property (Which pulls from .json)
         
         # update entries
-        contents['files'] = {**self.dict_corrected} or {**self.dict_folder}
+        if files and all((self.path.parent / e).exists() for v in files.values() for _, e in v.items()):
+            contents["files"] = files
+        elif files:
+            raise FileNotFoundError("all files in dict must exist in platform json folder")
+        else:
+            contents['files'] = {**self.dict_corrected} or {**self.dict_folder}
         contents['project'] = self.session.project
         if self.foraging_id:
             contents['foraging_id'] = self.foraging_id

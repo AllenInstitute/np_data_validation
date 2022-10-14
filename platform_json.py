@@ -17,7 +17,7 @@ import data_getters as dg
 import mtrain
 import nptk
 import strategies
-from data_validation import SessionFile
+from data_validation import SessionFile, SessionError
 
 # -------------------------------------------------------------------------------------- #
 STAGING = True 
@@ -117,8 +117,8 @@ class PlatformJson(SessionFile):
             "599657":'NP1',
             "598796":'NP2',
         }
-        if self.session.mouse_id in pretest_mice.keys():
-            return f"Pretest{pretest_mice[self.session.mouse_id]}" 
+        if self.session.mouse in pretest_mice.keys():
+            return f"Pretest{pretest_mice[self.session.mouse]}" 
         return self.contents.get('experiment', self.session.project)
     
     @property

@@ -1145,6 +1145,50 @@ class Files(PlatformJson):
             f.writelines('sessionid: ' + self.session.id + "\n")
             f.writelines("location: '" + self.session.npexp_path.as_posix() + "'")
     
+    
+    @property
+    def dict_expected_d2(self) -> dict:  
+        platform_files = {}
+        for probe_letter in "ABCDEF":
+            probe_folder = f'{self.session.folder}_probe{probe_letter}_sorted'
+            probe_key = f"ephys_raw_data_probe_{probe_letter}_sorted"
+        
+            # add probe entry to files dict
+            platform_files.update(
+                {probe_key:
+                    {"directory_name": probe_folder}
+                    }
+                )    
+            
+        return platform_files
+    
+    @property
+    def dict_folder_d2(self) -> dict:
+        """Return dict_expected for entries actually in the same folder as the json"""
+        dict_folder = {}
+        for k,v in self.dict_expected_d2.items():
+            if (self.path.parent / v['directory_name']).exists():
+                # add probe entry to files dict
+                dict_folder.update({k:v})
+                
+        return dict_folder
+    
+    @property
+    def entries_d2(self) -> list:
+        return [self.entry_from_dict({k:v}) for k,v in self.dict_expected_d2.items()]
+    
+    def add_d2(self):
+        if self.dict_expected_d2 != self.dict_folder_d2:
+            print("not all sorted probe folders are present - aborting D2 platform json update")
+            return
+        contents = self.contents # must copy contents to avoid breaking class property (Which pulls from .json)
+        contents['files'] = {**contents['files'], **self.dict_expected_d2}
+        with self.path.open('w') as f:
+            json.dump(dict(contents), f, indent=4)
+        print(f"updated {self.path.name}")
+        
+        
+class D2(Files):
 def get_created_timestamp_from_file(file:Union[str, pathlib.Path]):
     timestamp = pathlib.Path(file).stat().st_ctime
     return datetime.datetime.fromtimestamp(timestamp)

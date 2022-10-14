@@ -446,6 +446,34 @@ class Entry:
                 break
     
 # -------------------------------------------------------------------------------------- #
+class EphysSorted(Entry):
+    
+    lims_upload_labels = [f"ephys_raw_data_probe_{c}_sorted" for c in 'ABCDEF']
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.probe_letter = self.descriptive_name[-1].upper() # A-F           
+        # self.source = self.npexp
+    
+    @property
+    def expected_data(self) -> pathlib.Path:
+        """Presumed path to the data in the same folder as the platform json file"""
+        return self.platform_json.path.parent / self.platform_json.dict_expected_d2[self.descriptive_name][self.dir_or_file_type]
+    
+    @property
+    def origin(self) -> pathlib.Path:
+        return self.npexp / self.dir_or_file_name
+        
+    @property 
+    def lims(self) -> Union[pathlib.Path,None]:
+        if not hasattr(self, '_lims'):
+            if not (lims := self.platform_json.session.lims_path):
+                self._lims = None
+            else:
+                glob = list(lims.glob(f'*/*_probe{self.probe_letter}'))
+                self._lims = glob[0] if glob else None
+        return self._lims
+
 class EphysRaw(Entry):
     
     probe_drive_map = {

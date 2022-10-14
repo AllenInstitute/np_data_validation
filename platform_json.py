@@ -112,6 +112,13 @@ class PlatformJson(SessionFile):
     
     @property
     def experiment(self):
+        pretest_mice = {
+            "603810":'NP0',
+            "599657":'NP1',
+            "598796":'NP2',
+        }
+        if self.session.mouse_id in pretest_mice.keys():
+            return f"Pretest{pretest_mice[self.session.mouse_id]}" 
         return self.contents.get('experiment', self.session.project)
     
     @property
@@ -1133,7 +1140,7 @@ class Files(PlatformJson):
             raise FileNotFoundError("all files in dict must exist in platform json folder")
         else:
             contents['files'] = {**self.dict_corrected} or {**self.dict_folder}
-        contents['project'] = self.session.project
+        contents['project'] = self.experiment
         if self.foraging_id:
             contents['foraging_id'] = self.foraging_id
         

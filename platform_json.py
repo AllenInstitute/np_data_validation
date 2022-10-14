@@ -637,7 +637,7 @@ class Camstim(Entry):
             mtrain_stage_pkl = None
             #* this is second preference visual pkl if the foraging pkl is not found
             mtrain_stage = self.platform_json.contents.get('stimulus_name', None)
-            mtrain_stage = self.script.stem if mtrain_stage is None else mtrain_stage
+            mtrain_stage = self.platform_json.script.stem if (self.platform_json.script and mtrain_stage is None) else mtrain_stage
             if mtrain_stage:
                 glob = f"*{mtrain_stage}*.pkl"
                 matches = get_files_created_between(self.source,glob,self.platform_json.exp_start,self.platform_json.exp_end)

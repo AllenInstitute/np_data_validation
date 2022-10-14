@@ -579,8 +579,8 @@ class Sync(Entry):
         start = self.platform_json.exp_start
         end = self.platform_json.exp_end + datetime.timedelta(minutes=30)
         hits = get_files_created_between(self.source,glob,start,end)
-        if not hits:
-            print(f"No matching sync file found at origin {self.source}")
+        # if not hits:
+        #     print(f"No matching sync file found at origin {self.source}")
         return return_single_hit(hits)
         
 # -------------------------------------------------------------------------------------- #
@@ -653,8 +653,8 @@ class Camstim(Entry):
         glob = f"*{self.pkl_file_label}*.pkl"
         hits += get_files_created_between(self.source,glob,self.platform_json.exp_start,self.platform_json.exp_end)
             
-        if len(hits) == 0:
-            print(f"No matching {self.pkl_file_label}.pkl found")
+        # if len(hits) == 0:
+        #     print(f"No matching {self.pkl_file_label}.pkl found")
         
         return return_single_hit(hits)
 
@@ -674,8 +674,8 @@ class VideoTracking(Entry):
         start = self.platform_json.exp_start
         end = self.platform_json.exp_end + datetime.timedelta(seconds=10)
         hits = get_files_created_between(self.source,glob,start,end)
-        if not hits:
-            print(f"No matching video info json at origin {self.source}")
+        # if not hits:
+        #     print(f"No matching video info json at origin {self.source}")
         return return_single_hit(hits)
     
 class VideoInfo(Entry):
@@ -698,8 +698,8 @@ class VideoInfo(Entry):
         start = self.platform_json.exp_start
         end = self.platform_json.exp_end + datetime.timedelta(seconds=10)
         hits = get_files_created_between(self.source,glob,start,end)
-        if not hits:
-            print(f"No matching video info json at origin {self.source}")
+        # if not hits:
+        #     print(f"No matching video info json at origin {self.source}")
         return return_single_hit(hits)
     
 # -------------------------------------------------------------------------------------- #
@@ -730,7 +730,7 @@ class SurfaceImage(Entry):
         hits = get_files_created_between(self.source,glob,self.platform_json.exp_start,self.platform_json.exp_end)
         
         if len(hits) == 0:
-            print(f"No matching surface image found at origin {self.source}")
+            # print(f"No matching surface image found at origin {self.source}")
             return None
         
         right_labels_only = True if all('right' in hit.name for hit in hits) else False
@@ -768,7 +768,8 @@ class NewscaleLog(Entry):
         if log.exists():
             return log
         else:
-            print(f"No matching newscale log found at origin {self.source}")
+            pass
+            # print(f"No matching newscale log found at origin {self.source}")
     
     
     # TODO trim the MPM logs or copy only what's needed

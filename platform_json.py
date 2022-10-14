@@ -16,6 +16,7 @@ import data_validation as dv
 import data_getters as dg
 import mtrain
 import nptk
+import strategies
 from data_validation import SessionFile
 
 # -------------------------------------------------------------------------------------- #
@@ -431,7 +432,7 @@ class Entry:
             
             if self.dir_or_file_type == 'filename':
                 print(f"Checksumming and copying {source} to {dest}")
-                dv.strategies.copy_file(source,dest) if not STAGING else dest.symlink_to(source)
+                strategies.copy_file(source,dest) if not STAGING else dest.symlink_to(source)
                 print('Copying complete')
 
             if self.correct_data:

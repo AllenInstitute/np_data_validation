@@ -500,6 +500,10 @@ class EphysRaw(Entry):
         self.probe_letter = self.descriptive_name[-1].upper() # A-F           
         self.source = pathlib.Path(f"//{self.platform_json.acq}/{self.probe_drive_map[self.probe_letter]}")
     
+    @property 
+    def lims(self) -> Union[pathlib.Path,None]:
+        return self.platform_json.session.lims_path / self.dir_or_file_name if self.platform_json.session.lims_path else None
+    
     @property
     def origin(self) -> pathlib.Path:
         

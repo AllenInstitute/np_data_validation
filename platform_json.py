@@ -1241,6 +1241,21 @@ def session_to_platform_json_path(session:Union[int, str],root:Union[str,pathlib
         print(f"multiple platform jsons found in session folder on np-exp, returning {results[0]} ")
     return results[0]
 
+def find_platform_json(session:Union[int,str]) -> pathlib.Path:
+    """Look for platform jsons in various places and return one"""
+    json_path = session_to_platform_json_path(session, NPEXP_PATH)
+    if not json_path:
+        try:
+            json_path = session_to_platform_json_path(session, pathlib.Path("//10.128.54.19/sd9"))
+        except FileNotFoundError:
+            pass
+    if not json_path:
+        for comp in ["//w10dtsm112719/","//w10dtsm18306/"]:
+            json_path = session_to_platform_json_path(session, (comp+"c$/ProgramData/AIBS_MPE/neuropixels_data"))
+            if json_path and json_path.exists():
+                break
+    return json_path 
+
 if __name__=="__main__":
     STAGING = True
     sessionID = "1208667752_637484_20220908"

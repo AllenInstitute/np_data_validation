@@ -2292,12 +2292,15 @@ class DataValidationStatus:
 
                 if attr == "lims_backup" and not [
                     b for b in self.matches if backup_file.compare(b) in b.SELVES
-                ]:
+                ]: # we don't already have a match that corresponds to this backup
                     # grab the lims hash recorded when uploaded to lims
-                    lims_file = LimsDVDatabase.get_matches(self.file) or None
-                    if lims_file:
-                        self.db.add_file(lims_file)
-                        self.matches.extend(lims_file)
+                    lims_files = LimsDVDatabase.get_matches(self.file) or None
+                    if lims_files:
+                        for lims_file in lims_files:
+                            if not lims_file:
+                                continue
+                            self.db.add_file(lims_file)
+                            self.matches.append(lims_file)
 
                 if (
                     attr == "npexp_backup"

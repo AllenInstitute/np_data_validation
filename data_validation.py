@@ -849,7 +849,9 @@ class DataValidationFile(abc.ABC):
                 f"{self.__class__.__name__}: path must be a str pointing to a file: {type(path)}"
             )
         if path:
-            path = pathlib.Path(path).resolve() #! follow symlinks to data
+            path = pathlib.Path(path)
+            if path.is_symlink():
+                path.resolve() #! follow symlinks to data
 
             # ensure the path is a file, not directory
             # ideally we would check the path on disk with pathlib.Path.is_file(), but that only works if the file exists

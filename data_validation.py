@@ -1739,9 +1739,8 @@ class MongoDataValidationDB(DataValidationDB):
                         ]}
                     )
                 )
-            # TODO consolidate path+checksum query into one that finds either, then
-            # if none returned find size matches separately
-            if not entries and file.size is not None:
+            if not entries and file.size is not None and file.size > 10:
+                # small files will have too many matches in the db so we skip this
                 entries = list(
                     cls.db.find(
                         {"size": file.size},

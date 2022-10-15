@@ -324,8 +324,11 @@ class Entry:
     @property
     def sd9(self):
         sd9 = pathlib.Path("//10.128.54.19/sd9")
-        if sd9.exists() and self.platform_json.path.parent.exists():
-            return sd9 / self.platform_json.path.parent.name
+        try:
+            if sd9.exists() and self.platform_json.path.parent.exists():
+                return sd9 / self.platform_json.path.parent.name
+        except OSError:
+            pass
         return None
     @property
     def sources(self) -> List[pathlib.Path]:
@@ -347,7 +350,7 @@ class Entry:
             sources.append(self.npexp)    
         elif self.z.exists():
             sources.append(self.z)
-        elif self.sd9.exists():
+        elif self.sd9:
             sources.append(self.sd9)
         return sources
 

@@ -14,6 +14,10 @@ from typing import Union
 import psycopg2
 from psycopg2 import connect, extras
 
+class NoBehaviorSessionError(Exception):
+    pass
+class MultipleBehaviorSessionsError(Exception):
+    pass
 
 def get_foraging_id_from_behavior_session(
     mouse_id: Union[int,str],
@@ -32,13 +36,13 @@ def get_foraging_id_from_behavior_session(
     cur.execute(query)
     info_list = []
     if cur.rowcount == 0:
-        raise Exception(f"No behavior session found for MID {mouse_id} between {start} and {end}")
+        raise NoBehaviorSessionError(f"No behavior session found for MID {mouse_id} between {start} and {end}")
     elif cur.rowcount != 0:
         info_list = cur.fetchall()
         if len(info_list) > 1:
-            raise Exception(f"Multiple behavior sessions found for MID {mouse_id} between {start} and {end}")
+            raise MultipleBehaviorSessionsError(f"Multiple behavior sessions found for MID {mouse_id} between {start} and {end}")
         elif info_list == []:
-            raise Exception(f"No behavior session found for MID {mouse_id} between {start} and {end}")
+            raise NoBehaviorSessionError(f"No behavior session found for MID {mouse_id} between {start} and {end}")
         elif len(info_list) == 1 and isinstance(info_list[0],tuple):
             foraging_id = info_list[0][0]
             return foraging_id  

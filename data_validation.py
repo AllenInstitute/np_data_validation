@@ -1428,7 +1428,6 @@ class OrphanedDVFile(DataValidationFile):
         if type not in available_DVFiles.keys():
             raise ValueError(f"Unknown DVFile type: {type}")
         self.convert(type)
-        try:
         DataValidationFile.__init__(self, *args, **kwargs)
 
     def convert(self, type: Literal["sha3_256", "sha256", "crc32"]):

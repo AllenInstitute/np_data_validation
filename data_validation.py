@@ -1429,11 +1429,7 @@ class OrphanedDVFile(DataValidationFile):
             raise ValueError(f"Unknown DVFile type: {type}")
         self.convert(type)
         try:
-            DataValidationFile.__init__(self, *args, **kwargs)
-        except FilepathIsDirError:
-            # weird files may be fed in this class, so we'll just ignore this error
-            logging.debug(f"FilepathIsDirError - OrphanedDVFile.__init__(): {args} {kwargs}")
-            return
+        DataValidationFile.__init__(self, *args, **kwargs)
 
     def convert(self, type: Literal["sha3_256", "sha256", "crc32"]):
         """Convert class to use specific checksum type"""
@@ -1691,7 +1687,10 @@ class MongoDataValidationDB(DataValidationDB):
                 file = cls.DVFile(path=path, size=size, checksum=checksum)
             except SessionError:
                 # create non-SessionFile DVFile object, use custom get_matches method
-                file = OrphanedDVFile(path=path, size=size, checksum=checksum)
+                try:
+                    file = OrphanedDVFile(path=path, size=size, checksum=checksum)
+                except:
+                    return []
 
         match = [match] if match and not isinstance(match, list) else match
 

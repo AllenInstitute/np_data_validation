@@ -486,7 +486,7 @@ class Session:
         
         This property getter just prevents repeat calls to lims
         """
-        if not hasattr(self, '_lims_session_json') or self._lims_session_json is None:
+        if not hasattr(self, '_lims_session_json'):
             self._lims_session_json = self.get_lims_content()
         return self._lims_session_json
     
@@ -494,6 +494,8 @@ class Session:
         response = requests.get(f"http://lims2/behavior_sessions/{self.id}.json?")
         if response.status_code == 404:
             response = requests.get(f"http://lims2/ecephys_sessions/{self.id}.json?")
+            if response.status_code == 404:
+                return None
         elif response.status_code != 200:
             raise requests.RequestException(f"Could not find content for session {self.id} in LIMS")
         
@@ -501,7 +503,9 @@ class Session:
         
     @property
     def project(self) -> str:
-        return self.lims_session_json['project']['code']
+        if self.lims_session_json:
+            return self.lims_session_json['project']['code']
+        return None
 
 class SessionFile:
     """Represents a single file belonging to a neuropixels ecephys session"""

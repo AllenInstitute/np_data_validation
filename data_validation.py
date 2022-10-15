@@ -851,8 +851,8 @@ class DataValidationFile(abc.ABC):
         if path:
             path = pathlib.Path(path)
             try:
-            if path.is_symlink():
-                path.resolve() #! follow symlinks to data
+                if path.is_symlink():
+                    path.resolve() #! follow symlinks to data
             except OSError:
                 # pathlib raises error if inaccessible
                 raise ValueError(

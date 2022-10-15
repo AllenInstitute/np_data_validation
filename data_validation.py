@@ -1424,7 +1424,12 @@ class OrphanedDVFile(DataValidationFile):
         if type not in available_DVFiles.keys():
             raise ValueError(f"Unknown DVFile type: {type}")
         self.convert(type)
-        DataValidationFile.__init__(self, *args, **kwargs)
+        try:
+            DataValidationFile.__init__(self, *args, **kwargs)
+        except FilepathIsDirError:
+            # weird files may be fed in this class, so we'll just ignore this error
+            logging.debug(f"FilepathIsDirError - OrphanedDVFile.__init__(): {args} {kwargs}")
+            return
 
     def convert(self, type: Literal["sha3_256", "sha256", "crc32"]):
         """Convert class to use specific checksum type"""

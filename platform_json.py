@@ -718,8 +718,6 @@ class SurfaceImage(Entry):
     imgs = ['pre_experiment','brain','pre_insertion','post_insertion','post_stimulus','post_experiment']
     lims_upload_labels =[f"{img}_surface_image_{side}" for img in imgs for side in ['left','right'] ] # order of left/right is important for self.original
     
-    #TODO assign total surface images to each instance
-    total_imgs_per_exp:int = None
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

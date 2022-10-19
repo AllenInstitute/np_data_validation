@@ -10,15 +10,13 @@ import shutil
 import warnings
 from typing import Dict, List, Tuple, Union
 
-import requests
+import pandas as pd
 
-import data_validation as dv
 import data_getters as dg
 import mtrain
 import nptk
 import strategies
-from data_validation import SessionFile, SessionError
-
+from data_validation import *
 # -------------------------------------------------------------------------------------- #
 STAGING = True 
 # don't actually copy or modify anything - instead, create a 'virtual' session folder

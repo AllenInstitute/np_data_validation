@@ -1052,8 +1052,6 @@ class Files(PlatformJson):
         #     return all([e.correct_data for e in self.entries_corrected]) 
         # else:
         return all([e.correct_data for e in self.entries_expected]) 
-            return all([e.correct_data for e in self.entries_expected]) 
-        return all([e.correct_data for e in self.entries_expected]) 
         # return False
 
 

@@ -1083,7 +1083,7 @@ class Files(PlatformJson):
         
         if self.correct_data_ready:
             return
-        MANUAL_MODE = True
+        MANUAL_MODE = False
         if not MANUAL_MODE:
            return
        

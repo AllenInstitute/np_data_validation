@@ -807,15 +807,17 @@ class Notebook(Entry):
                 'overlay_image',
                 'insertion_location_image',
                 'isi_registration_coordinates',
-                'isi _registration_coordinates'
+                'isi _registration_coordinates',
+                'probelocator_insertions_in_vasculature_image_space',
+                'probelocator_insertions_in_rig_image_space',
+
                 ]
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)   
     
     @property
     def origin(self) -> pathlib.Path:    
-        pass
-        #TODO notebook entries
+        return self.z
         
 # --------------------------------------------------------------------------------------
 class Surgery(Entry):

@@ -1050,11 +1050,13 @@ class Files(PlatformJson):
  
     @property
     def correct_data_ready(self) -> bool:
-        if self.entries_corrected:
-            return all([e.correct_data for e in self.entries_corrected]) 
-        else:
+        # if self.entries_corrected:
+        #     return all([e.correct_data for e in self.entries_corrected]) 
+        # else:
+        return all([e.correct_data for e in self.entries_expected]) 
             return all([e.correct_data for e in self.entries_expected]) 
-        return False
+        return all([e.correct_data for e in self.entries_expected]) 
+        # return False
 
 
     def fix_data(self):

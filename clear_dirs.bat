@@ -19,5 +19,5 @@ IF %rig%==NP.1-Acq CALL C:\ProgramData\Miniconda3\Scripts\activate.bat C:\Progra
 
 CALL conda activate dv
 
-CALL python clear_dirs.py
+CALL python backup_to_npexp.py
 cmd \k

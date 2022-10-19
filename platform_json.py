@@ -1315,10 +1315,11 @@ def find_platform_json(session:Union[int,str]) -> pathlib.Path:
     if not json_path:
         try:
             json_path = session_to_platform_json_path(session, pathlib.Path("//10.128.54.19/sd9"))
-        except FileNotFoundError:
+        except:
+            json_path = None
             pass
     if not json_path:
-        for comp in ["//w10dtsm112719/","//w10dtsm18306/"]:
+        for comp in ["//w10dtsm112719/","//w10dtsm18306/", "//w10dtsm18307/"]:
             json_path = session_to_platform_json_path(session, (comp+"c$/ProgramData/AIBS_MPE/neuropixels_data"))
             if json_path and json_path.exists():
                 break

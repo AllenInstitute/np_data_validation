@@ -68,8 +68,18 @@ class PlatformJson(SessionFile):
     
     @property
     def contents(self) -> Dict:
-        with self.path.open('r') as f:
-            return json.load(f)
+            count = 0
+            while count < 10:
+                try:
+                    with self.path.open('r') as f:
+                        json_contents = json.load(f)
+                        break
+                except json.JSONDecodeError:
+                    count += 1
+                    time.sleep(0.1)
+            else:
+                raise json.JSONDecodeError(f"Could not decode {self.path}")
+            return json_contents
     
     @property
     def files(self) -> Dict[str, Dict[str,str]]:

@@ -1114,14 +1114,14 @@ class DataValidationFile(abc.ABC):
         Match.SELF_MISSING_OTHER,
         Match.SELF_CHECKSUM_TYPE_MISMATCH,
     )
-    """`(self.compare(other))` will be in the returned list if `self` and `other` are
+    """`self.compare(other)` will be in the returned list if `self` and `other` are
     suspected to be the same file"""
 
     VALID_COPIES: Tuple[Match] = (
         Match.VALID_COPY,
         Match.VALID_COPY_RENAMED,
     )
-    """`(self.compare(other)` will be in the returned list if `other` is a
+    """`self.compare(other)` will be in the returned list if `other` is a
     checksum-validated copy of `self`"""
 
     UNCONFIRMED_COPIES: Tuple[Match] = (
@@ -1131,7 +1131,7 @@ class DataValidationFile(abc.ABC):
         Match.COPY_CHECKSUM_TYPE_MISMATCH,
         Match.POSSIBLE_COPY_RENAMED,
     )
-    """`(self.compare(other))` will be in the returned list if file names and sizes
+    """`self.compare(other)` will be in the returned list if file names and sizes
         suggest `other` is a copy of `self`, and checksums do not contraindicate, but
         additional checksums need to be generated to confirm"""
 
@@ -1140,7 +1140,7 @@ class DataValidationFile(abc.ABC):
         Match.COPY_UNSYNCED_OR_CORRUPT_DATA,
         Match.COPY_UNSYNCED_DATA,
     )
-    """`(self.compare(other))` will be in the returned list if the `other` has a checksum or
+    """`self.compare(other)` will be in the returned list if `other` has a checksum or
     size that indicates an invalid copy or out-of-date information"""
 
     IGNORED: Tuple[Match] = (
@@ -1150,7 +1150,7 @@ class DataValidationFile(abc.ABC):
         Match.CHECKSUM_COLLISION,
         Match.SELF_PREVIOUS_VERSION,
     )
-    """`(self.compare(other))` will be in the returned list if the `other` has properties
+    """`self.compare(other)` will be in the returned list if `other` has properties
     that suggest it should be ignored for the purposes of validating data"""
 
     def __hash__(self):

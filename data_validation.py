@@ -377,8 +377,22 @@ def valid_crc32_checksum(*args, value: str = None, **kwargs) -> bool:
         return True
     return False
 
-
-class Session:
+class SingletonMeta(type):
+    """
+    This is a thread-safe implementation of Singleton.
+    
+    https://refactoring.guru/design-patterns/singleton/python/example#example-1
+    """
+    _instances = {}
+    _lock: threading.Lock = threading.Lock()
+    
+    def __call__(cls, *args, **kwargs):
+        with cls._lock:
+            if cls not in cls._instances:
+                cls._instances[cls] = super().__call__(*args, **kwargs)
+            return cls._instances[cls]
+    
+class Session(metaclass=SingletonMeta):
     """Get session information from any string: filename, path, or foldername"""
 
     # use staticmethods with any path/string, without instantiating the class:
@@ -423,6 +437,14 @@ class Session:
         else:
             raise SessionError(f"{path} does not contain a valid session folder string")
 
+    def __eq__(self, other):
+        if isinstance(other, self.__class__):
+            return self.id == other.id and self.mouse == other.mouse and self.date == other.date
+        return False
+    
+    def __hash__(self):
+        return hash(self.id) ^ hash(self.mouse) ^ hash(self.date)
+    
     @classmethod
     def folder(cls, path: Union[str, pathlib.Path]) -> Union[str, None]:
         """Extract [8+digit session ID]_[6-digit mouse ID]_[6-digit date

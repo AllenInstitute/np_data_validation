@@ -2683,21 +2683,14 @@ class DataValidationStatus:
                 logging.exception(f"Failed to remove {self.file} file after copy: {e}")
 
     def ensure_npexp_backup(self):
-        if not isinstance(self.file, SessionFile):
-            # TODO we can work out the session for orphan files too 
+        if self.valid_lims or self.valid_npexp: 
             return
-        if (
-            self.report() == self.Backup.HAS_VALID_BACKUP
-            and any(b.path == self.file.lims_backup for b in self.backups)
-        ): # TODO update report() to return VALID IN LIMS
-            return
-        if self.file.session.npexp_path.as_posix() in self.file.path.as_posix():
-            return
-        self.copy(validate=True, recopy=False)
+
+        self.copy(validate=True, recopy=True)
         # could use recopy=True 
         if self.status != self.Backup.HAS_POSSIBLE_UNSYNCED_BACKUP:
             self.ensure_backup_checksum()
-        if not self.status == self.Backup.HAS_VALID_BACKUP:
+        if not self.status >= self.Backup.HAS_VALID_BACKUP:
             logging.info(f"Still no valid backups for: {self.file}")
             
     def ensure_backup_checksum(self):

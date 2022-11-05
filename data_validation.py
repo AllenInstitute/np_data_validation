@@ -2774,7 +2774,11 @@ class DataValidationStatus:
         elif not any(s.checksum for s in self.selves):
             return self.Backup.HAS_NO_CHECKSUMS_IN_DB
 
-        if self.valid_backups:
+        if self.valid_lims:
+            return self.Backup.VALID_ON_LIMS
+        elif self.valid_npexp:
+            return self.Backup.VALID_ON_NPEXP
+        elif self.valid_backups:
             # print('valid backup(s) exist: safe to delete')
             return self.Backup.HAS_VALID_BACKUP
         elif self.unconfirmed_backups and not self.invalid_backups:
@@ -2872,12 +2876,27 @@ class DataValidationStatus:
                     backup
                     for s in self.selves
                     for backup in self.backups
-                    if s.compare(backup) in DataValidationFile.VALID_COPIES
+                    if (
+                        s.compare(backup) in DataValidationFile.VALID_COPIES
+                        and backup.path.exists()
+                    )
                 ]
             )
         )
         # * note: list(set()) means these are no longer in original order
-
+        
+    @property 
+    def valid_lims(self):
+        if not self.valid_backups:
+            return False
+        return any(b.session.lims_path in b.path.parents for b in self.valid_backups if isinstance(b,SessionFile))
+    
+    @property 
+    def valid_npexp(self):
+        if not self.valid_backups:
+            return False
+        return any(b.session.npexp_path in b.path.parents for b in self.valid_backups if isinstance(b,SessionFile))
+    
     @property
     def unconfirmed_backups(self):
         return list(
@@ -2886,7 +2905,10 @@ class DataValidationStatus:
                     backup
                     for s in self.selves
                     for backup in self.backups
-                    if s.compare(backup) in DataValidationFile.UNCONFIRMED_COPIES
+                    if (
+                        s.compare(backup) in DataValidationFile.UNCONFIRMED_COPIES
+                        and backup.path.exists()
+                    )
                 ]
             )
         )
@@ -2899,7 +2921,10 @@ class DataValidationStatus:
                     backup
                     for s in self.selves
                     for backup in self.backups
-                    if s.compare(backup) in DataValidationFile.INVALID_COPIES
+                    if (
+                        s.compare(backup) in DataValidationFile.INVALID_COPIES
+                        and backup.path.exists()
+                    )
                 ]
             )
         )

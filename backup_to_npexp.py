@@ -123,12 +123,12 @@ def move_session_folders_to_npexp():
 
     divider = "\n" + "=" * 40 + "\n\n"
 
-    for F in dv.DVFolders_from_dirs(dirs, only_session_folders=True):
-        if F.session and (int(F.session.id) < 1000 or 'pretest' in F.session.folder): # pretest data
-            continue
+    for F in dv.DVFolders_from_dirs(dirs, only_session_folders=only_session_folders):
         if not F:
             continue
         if not F.file_paths:
+            continue
+        if F.session and (int(F.session.id) < 1000 or 'pretest' in F.session.folder): # pretest data
             continue
         F.min_age_days = min_age_days
         F.regenerate_threshold_bytes = regenerate_threshold_bytes

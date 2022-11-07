@@ -2664,7 +2664,7 @@ class DataValidationStatus:
         if self.valid_lims or self.valid_npexp: 
             return
 
-        self.copy(validate=True, recopy=True)
+        self.copy(validate=True, recopy=False)
         # could use recopy=True 
         if self.status != self.Backup.HAS_POSSIBLE_UNSYNCED_BACKUP:
             self.ensure_backup_checksum()

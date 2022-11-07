@@ -2282,7 +2282,8 @@ class DataValidationStatus:
         size: int = None,
     ):
         if isinstance(file, DataValidationFile):
-            self.file = file
+            self.file:DataValidationFile = file
+            "Subject file for which we want to find backups."
         if not file or not isinstance(file, DataValidationFile):
             if isinstance(
                 file, (str, pathlib.Path)
@@ -2299,7 +2300,8 @@ class DataValidationStatus:
         self.matches = self.db.get_matches(
             self.file
         )  # for SessionFiles this only returns other files with session_id in path
-
+    
+        # TODO this section is currently slow - either move to a dedicated function or speed-up #
         self.backups: List[DataValidationFile] = []
         highest_backups: List[
             DataValidationFile

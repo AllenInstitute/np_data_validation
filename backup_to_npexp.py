@@ -127,12 +127,13 @@ def move_session_folders_to_npexp():
     for F in dv.DVFolders_from_dirs(dirs, only_session_folders=True):
         if not F:
             continue
-        if not F.file_paths:
-            continue
         F.min_age_days = min_age_days
         F.regenerate_threshold_bytes = regenerate_threshold_bytes
         F.filename_include_filter = filename_include_filter
         F.filename_exclude_filter = filename_exclude_filter
+        
+        if not F.file_paths:
+            continue
         
         print(f"{divider}Copying {F.path} to np-exp")
         F.copy_to_npexp()

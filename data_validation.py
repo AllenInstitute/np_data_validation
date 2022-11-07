@@ -3174,7 +3174,7 @@ class DataValidationFolder:
 
     @property
     def filename_exclude_filters(self):
-        return self.filename_include_filter.replace("*", "").replace(" ", "").strip().split("|")
+        return self.filename_exclude_filter.replace("*", "").replace(" ", "").strip().split("|")
 
     @property
     def file_paths(self) -> List[pathlib.Path]:

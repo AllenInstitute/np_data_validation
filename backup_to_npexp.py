@@ -103,7 +103,8 @@ def move_session_folders_to_npexp():
         "regenerate_threshold_bytes", fallback=1024 ** 2
     )
     min_age_days = config["options"].getint("min_age_days", fallback=0)
-    filename_filter = config["options"].get("filename_filter", fallback="")
+    filename_include_filter = config["options"].get("filename_include_filter", fallback="")
+    filename_exclude_filter = config["options"].get("filename_exclude_filter", fallback="")
     only_session_folders = config["options"].getboolean(
         "only_session_folders", fallback=False
     )
@@ -130,6 +131,8 @@ def move_session_folders_to_npexp():
             continue
         F.min_age_days = min_age_days
         F.regenerate_threshold_bytes = regenerate_threshold_bytes
+        F.filename_include_filter = filename_include_filter
+        F.filename_exclude_filter = filename_exclude_filter
         
         print(f"{divider}Copying {F.path} to np-exp")
         F.copy_to_npexp()

@@ -3087,7 +3087,8 @@ class DataValidationFolder:
     min_age_days: int = 0
     # - minimum age of a file for it to be deleted (provided that a valid backup exists)
 
-    filename_filter: str = ""
+    filename_include_filter: str = ""
+    filename_exclude_filter: str = ""
 
     # - applied to glob search for files in the folder
 
@@ -3168,8 +3169,12 @@ class DataValidationFolder:
                 self.add_backup_path(z_drive)
 
     @property
-    def filename_filters(self):
-        return self.filename_filter.replace("*", "").replace(" ", "").strip().split("|")
+    def filename_include_filters(self):
+        return self.filename_include_filter.replace("*", "").replace(" ", "").strip().split("|")
+
+    @property
+    def filename_exclude_filters(self):
+        return self.filename_include_filter.replace("*", "").replace(" ", "").strip().split("|")
 
     @property
     def file_paths(self) -> List[pathlib.Path]:
@@ -3184,14 +3189,16 @@ class DataValidationFolder:
                 child
                 for child in pathlib.Path(self.path).rglob("*")
                 if not child.is_dir()
-                and any(filters in child.name for filters in self.filename_filters)
+                and any(filters in str(child) for filters in self.filename_include_filters)
+                and not any(filters in str(child) for filters in self.filename_exclude_filters)
             ]
         else:
             self._file_paths = [
                 child
                 for child in pathlib.Path(self.path).iterdir()
                 if not child.is_dir()
-                and any(filters in child.name for filters in self.filename_filters)
+                and any(filters in str(child) for filters in self.filename_include_filters)
+                and not any(filters in str(child) for filters in self.filename_exclude_filters)
             ]
         return self._file_paths
     

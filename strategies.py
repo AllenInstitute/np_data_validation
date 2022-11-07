@@ -187,7 +187,7 @@ def delete_if_valid_backup_in_db(
     subject = ensure_checksum(subject, db)
     # print('- not currently generating checksums -')
     status = dv.DataValidationStatus(subject)
-    if status.report() == dv.DataValidationStatus.Backup.HAS_VALID_BACKUP:
+    if status.report() >= dv.DataValidationStatus.Backup.HAS_VALID_BACKUP:
         backups = status.valid_backups
         # subject.report(backups)
         # a final check before deleting (all items in 'backups' should be valid copies):

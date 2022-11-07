@@ -129,7 +129,6 @@ try:
 except ImportError:
     print("pymongo not installed")
 import certifi
-import certifi
 import requests
 
 import data_getters as dg  # from corbett's QC repo

@@ -3478,7 +3478,13 @@ def DVFolders_from_dirs(
         dirs = [dirs]
 
     def skip(dir) -> bool:
-        skip_filters = ["$RECYCLE.BIN", "_temp_", "#recycle"]
+        mice = [
+            "_366122_",
+            "_603810_",#NP0 pretest
+            "_599657_",#NP1 pretest
+            "_598796_",#NP2 pretest
+        ]
+        skip_filters = ["$RECYCLE.BIN", "_temp_", "#recycle", "pretest", *mice]
         if any(skip in str(dir) for skip in skip_filters):
             return True
 

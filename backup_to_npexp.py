@@ -124,8 +124,6 @@ def move_session_folders_to_npexp():
     divider = "\n" + "=" * 40 + "\n\n"
 
     for F in dv.DVFolders_from_dirs(dirs, only_session_folders=True):
-        if F.session and (int(F.session.id) < 1000 or 'pretest' in F.session.folder): # pretest data
-            continue
         if not F:
             continue
         if not F.file_paths:

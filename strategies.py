@@ -184,10 +184,10 @@ def delete_if_valid_backup_in_db(
     delete the subject.
     This is just a safety measure to prevent calling 'find_valid_backups' and deleting the returned list of backups!
     """
-    # subject = ensure_checksum(subject, db)
-    print('- not currently generating checksums -')
+    subject = ensure_checksum(subject, db)
+    # print('- not currently generating checksums -')
     status = dv.DataValidationStatus(subject)
-    if status.report() == dv.DataValidationStatus.Backup.HAS_VALID_BACKUP:
+    if status.report() >= dv.DataValidationStatus.Backup.HAS_VALID_BACKUP:
         backups = status.valid_backups
         # subject.report(backups)
         # a final check before deleting (all items in 'backups' should be valid copies):

@@ -24,6 +24,10 @@ lims_requests = {
 }
 # - ------------------------------------------------------------------------------------
 #   #
+server = "http://mpe-computers/v2.0"
+ALL_RIGS = requests.get(server).json()
+ALL_COMPS = requests.get(server+"/aibs_comp_id").json()
+
 # get AIBS IDs, if set
 COMP_ID: str = os.environ.get("AIBS_COMP_ID", socket.gethostname()).upper()
 RIG_ID: str = os.environ.get("AIBS_RIG_ID",None)
@@ -106,7 +110,7 @@ class Rig(Enum):
             # not in mpe-computers
             return ""
         
-        return requests.get(f"http://mpe-computers/v2.0/aibs_comp_id/{self.value}").json()['hostname'].upper()                      
+        return ALL_COMPS[self.value]['hostname'].upper()                      
 
 
     @property
@@ -175,7 +179,7 @@ class ConfigHTTP:
         if "BTVTest.1-Acq" in comp: # not in mpe-computers
             return None
         else:
-            return requests.get(f"{ConfigHTTP.server}/aibs_comp_id/{comp}").json()['hostname'].upper()                      
+            return ALL_COMPS[comp]['hostname'].upper()                      
     
     @staticmethod
     def get_np_computers(rigs: Union[List[int], int]=None, comp: Union[List[str], str]=None):
@@ -195,9 +199,8 @@ class ConfigHTTP:
 
         np_idx = ["NP." + str(idx) for idx in rigs]
 
-        all_pc = requests.get(ConfigHTTP.server).json()
         a = {}
-        for k, v in all_pc['comp_ids'].items():
+        for k, v in ALL_RIGS['comp_ids'].items():
             if any([sub in k for sub in np_idx]) and any([s in k.lower() for s in comp]):
                 a[k] = v['hostname'].upper()
         return a

@@ -376,22 +376,8 @@ def valid_crc32_checksum(*args, value: str = None, **kwargs) -> bool:
         return True
     return False
 
-class SingletonMeta(type):
-    """
-    This is a thread-safe implementation of Singleton.
-    
-    https://refactoring.guru/design-patterns/singleton/python/example#example-1
-    """
-    _instances = {}
-    _lock: threading.Lock = threading.Lock()
-    
-    def __call__(cls, *args, **kwargs):
-        with cls._lock:
-            if cls not in cls._instances:
-                cls._instances[cls] = super().__call__(*args, **kwargs)
-            return cls._instances[cls]
-    
-class Session(metaclass=SingletonMeta):
+
+class Session:
     """Get session information from any string: filename, path, or foldername"""
 
     # use staticmethods with any path/string, without instantiating the class:
@@ -436,14 +422,6 @@ class Session(metaclass=SingletonMeta):
         else:
             raise SessionError(f"{path} does not contain a valid session folder string")
 
-    def __eq__(self, other):
-        if isinstance(other, self.__class__):
-            return self.id == other.id and self.mouse == other.mouse and self.date == other.date
-        return False
-    
-    def __hash__(self):
-        return hash(self.id) ^ hash(self.mouse) ^ hash(self.date)
-    
     @classmethod
     def folder(cls, path: Union[str, pathlib.Path]) -> Union[str, None]:
         """Extract [8+digit session ID]_[6-digit mouse ID]_[6-digit date
@@ -2687,7 +2665,7 @@ class DataValidationStatus:
         if self.valid_lims or self.valid_npexp: 
             return
 
-        self.copy(validate=True, recopy=True)
+        self.copy(validate=True, recopy=False)
         # could use recopy=True 
         if self.status != self.Backup.HAS_POSSIBLE_UNSYNCED_BACKUP:
             self.ensure_backup_checksum()
@@ -3110,7 +3088,8 @@ class DataValidationFolder:
     min_age_days: int = 0
     # - minimum age of a file for it to be deleted (provided that a valid backup exists)
 
-    filename_filter: str = ""
+    filename_include_filter: str = ""
+    filename_exclude_filter: str = ""
 
     # - applied to glob search for files in the folder
 
@@ -3191,8 +3170,12 @@ class DataValidationFolder:
                 self.add_backup_path(z_drive)
 
     @property
-    def filename_filters(self):
-        return self.filename_filter.replace("*", "").replace(" ", "").strip().split("|")
+    def filename_include_filters(self):
+        return self.filename_include_filter.replace("*", "").replace(" ", "").strip().split("|")
+
+    @property
+    def filename_exclude_filters(self):
+        return self.filename_exclude_filter.replace("*", "").replace(" ", "").strip().split("|")
 
     @property
     def file_paths(self) -> List[pathlib.Path]:
@@ -3207,14 +3190,22 @@ class DataValidationFolder:
                 child
                 for child in pathlib.Path(self.path).rglob("*")
                 if not child.is_dir()
-                and any(filters in child.name for filters in self.filename_filters)
+                and any(filters in str(child) for filters in self.filename_include_filters)
+                and (
+                    not any(self.filename_exclude_filters)
+                    or not any(filters in str(child) for filters in self.filename_exclude_filters)
+                )
             ]
         else:
             self._file_paths = [
                 child
                 for child in pathlib.Path(self.path).iterdir()
                 if not child.is_dir()
-                and any(filters in child.name for filters in self.filename_filters)
+                and any(filters in str(child) for filters in self.filename_include_filters)
+                and (
+                    not any(self.filename_exclude_filters)
+                    or not any(filters in str(child) for filters in self.filename_exclude_filters)
+                )
             ]
         return self._file_paths
     
@@ -3479,7 +3470,13 @@ def DVFolders_from_dirs(
         dirs = [dirs]
 
     def skip(dir) -> bool:
-        skip_filters = ["$RECYCLE.BIN", "_temp_", "#recycle"]
+        mice = [
+            "_366122_",
+            "_603810_",#NP0 pretest
+            "_599657_",#NP1 pretest
+            "_598796_",#NP2 pretest
+        ]
+        skip_filters = ["$RECYCLE.BIN", "_temp_", "#recycle", "pretest", *mice]
         if any(skip in str(dir) for skip in skip_filters):
             return True
 

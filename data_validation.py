@@ -144,7 +144,7 @@ INCOMING_PATH = pathlib.Path("//allen/programs/braintv/production/incoming/neura
 log_level = logging.INFO
 log_format = "%(asctime)s %(threadName)s %(message)s"  # ? %(relativeCreated)6d
 log_datefmt = "%Y-%m-%d %H:%M"
-log_folder = pathlib.Path("./logs")
+log_folder = pathlib.Path("./logs").resolve()
 log_folder.mkdir(parents=True, exist_ok=True)
 log_filename = "data_validation_main.log"
 log_path = log_folder / log_filename

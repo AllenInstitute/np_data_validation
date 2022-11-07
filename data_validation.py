@@ -3190,7 +3190,10 @@ class DataValidationFolder:
                 for child in pathlib.Path(self.path).rglob("*")
                 if not child.is_dir()
                 and any(filters in str(child) for filters in self.filename_include_filters)
-                and not any(filters in str(child) for filters in self.filename_exclude_filters)
+                and (
+                    not any(self.filename_exclude_filters)
+                    or not any(filters in str(child) for filters in self.filename_exclude_filters)
+                )
             ]
         else:
             self._file_paths = [
@@ -3198,7 +3201,10 @@ class DataValidationFolder:
                 for child in pathlib.Path(self.path).iterdir()
                 if not child.is_dir()
                 and any(filters in str(child) for filters in self.filename_include_filters)
-                and not any(filters in str(child) for filters in self.filename_exclude_filters)
+                and (
+                    not any(self.filename_exclude_filters)
+                    or not any(filters in str(child) for filters in self.filename_exclude_filters)
+                )
             ]
         return self._file_paths
     

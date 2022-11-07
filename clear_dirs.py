@@ -78,15 +78,21 @@ def clear_orphan_files():
             args=(path,),
         )
         thread.start()
-        
-            
-def clear_dirs():
 
-    config, dirs = config_dirs_from_file()
-    
+
+def clear_dirs(args):
+    if args.dirpath:
+        dirs = [
+            pathlib.Path(d.strip()).resolve()
+            for d in args.dirpath.split(",")
+            if d != ""
+        ]
+        config, _ = config_dirs_from_file()
+    else:
+        config, dirs = config_dirs_from_file()
+
     if not dirs:
         return
-    
 
     regenerate_threshold_bytes = config["options"].getint(
         "regenerate_threshold_bytes", fallback=1024 ** 2

@@ -1,0 +1,1 @@
+python clear_temp_and_pretest_folders.py

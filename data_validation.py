@@ -3479,6 +3479,8 @@ def DVFolders_from_dirs(
         skip_filters = ["$RECYCLE.BIN", "_temp_", "#recycle", "pretest", *mice]
         if any(skip in str(dir) for skip in skip_filters):
             return True
+        if str(dir).endswith('_sorted') and not tuple(dir.rglob('metrics.csv')):
+            return True
 
     for dir in dirs:
         dir_path = pathlib.Path(dir)

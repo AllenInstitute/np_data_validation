@@ -3109,7 +3109,7 @@ class DataValidationFolder:
                 f"{self.__class__.__name__}: path must point to a folder {path}"
             )
         except ValueError:  # TODO make a file_vs_folder function with its own exception
-            self.path = pathlib.Path(path).as_posix()
+            self.path = pathlib.Path(path)
 
     def add_backup_path(self, path: Union[str, List[str]]):
         """Store one or more paths to folders possibly containing backups for the session"""
@@ -3146,7 +3146,7 @@ class DataValidationFolder:
         """
         # get the lims folder for this session and add it to the backup paths
         self.lims_path = self.session.lims_path  # must exist if not None
-        if self.lims_path and self.lims_path.as_posix() not in self.path:
+        if self.lims_path and self.lims_path.as_posix() not in str(self.path):
             self.add_backup_path(self.lims_path.as_posix())
 
         # get the npexp folder for this session and add it to the backup paths (if it exists)
@@ -3154,7 +3154,7 @@ class DataValidationFolder:
         if (
             self.npexp_path
             and os.path.exists(self.npexp_path)
-            and Session.NPEXP_ROOT.as_posix() not in self.path
+            and Session.NPEXP_ROOT.as_posix() not in str(self.path)
         ):
             self.add_backup_path(self.npexp_path.as_posix())
 
@@ -3188,7 +3188,7 @@ class DataValidationFolder:
             # for now, this will return the full list each time and be slower
             self._file_paths = [
                 child
-                for child in pathlib.Path(self.path).rglob("*")
+                for child in self.path.rglob("*")
                 if not child.is_dir()
                 and any(filters in str(child) for filters in self.filename_include_filters)
                 and (
@@ -3199,7 +3199,7 @@ class DataValidationFolder:
         else:
             self._file_paths = [
                 child
-                for child in pathlib.Path(self.path).iterdir()
+                for child in self.path.iterdir()
                 if not child.is_dir()
                 and any(filters in str(child) for filters in self.filename_include_filters)
                 and (

@@ -136,6 +136,21 @@ class PlatformJson(SessionFile):
                 raise json.JSONDecodeError(f"Could not decode {self.path}")
             return json_contents
     
+    def update(self, **kwargs):
+        "Update the contents of the json file with a backup of the original preserved"""
+        # ensure a backup of the original first
+        shutil.copy2(self.path, self.backup) if not self.backup.exists() else None
+        
+        # must copy contents to avoid breaking class property which pulls from .json
+        contents = self.contents 
+        
+        for k,v in kwargs.items():
+            contents.update({k:v})
+        
+        with self.path.open('w') as f:
+            json.dump(dict(contents), f, indent=4)
+        print(f"updated {self.path.name} with {kwargs.keys()}")
+    
     @property
     def files(self) -> Dict[str, Dict[str,str]]:
         return self.contents['files']
@@ -184,6 +199,37 @@ class PlatformJson(SessionFile):
             return f"Pretest{pretest_mice[self.session.mouse]}" 
         return self.contents.get('experiment', self.session.project)
     
+    @property
+    def probe_letters_inserted(self) -> List[str]:
+        "From CB QC"
+        probes_inserted = []
+        insertion_notes = self.contents.get('InsertionNotes',dict())
+        for probe_letter in 'ABCDEF':
+            probe = f'Probe{probe_letter}'
+            if (
+                probe not in insertion_notes.keys()
+                or insertion_notes[probe].get('FailedToInsert',0) == 0
+            ):
+                # assume that no notes means probe was inserted
+                probes_inserted.append(probe_letter)
+        return probes_inserted
+    
+    @probe_letters_inserted.setter
+    def probe_letters_inserted(self, inserted:str|Sequence[str]):
+        inserted = "".join(i.upper() for i in inserted)
+        if not all([probe_letter in 'ABCDEF' for probe_letter in inserted]):
+            raise ValueError(f"probe_letters_inserted must be a sequence of letters A-F")
+        insertion_notes = self.contents.get('InsertionNotes',dict())
+        for probe_letter in 'ABCDEF':
+            probe = f'Probe{probe_letter}'
+            probe_notes = insertion_notes.get(probe, dict())
+            if probe_letter not in inserted:
+                probe_notes['FailedToInsert'] = 1
+            elif probe_notes['FailedToInsert'] != 0:
+                probe_notes['FailedToInsert'] = 0
+            insertion_notes.update({probe:probe_notes})
+        self.update(InsertionNotes=insertion_notes)
+        
     @property
     def script(self) -> pathlib.Path:
         """Platform json 'script_name' is a path to the script that was run, which is
@@ -272,6 +318,24 @@ class PlatformJson(SessionFile):
         """Final foraging ID to use in platform json - currently using ID from 
         behavior session in lims if available, then mtrain, platform json itself"""
         return self.foraging_id_lims or self.foraging_id_mtrain or self.foraging_id_pkl or self.foraging_id_contents
+    
+    @property
+    def has_qc(self) -> bool:
+        "Does each inserted probe have unit_metrics and probe_noise QC files?"
+        for qc_path in QC_PATHS:
+            probe_noise = qc_path / self.session.folder / "probe_noise"
+            unit_metrics = qc_path / self.session.folder / "unit_metrics"
+            if probe_noise.exists() and unit_metrics.exists():
+                probe_noise_paths = list(probe_noise.glob("*"))
+                unit_metrics_paths = list(unit_metrics.glob("*"))
+                for probe_letter in self.probe_letters_inserted:
+                    if not any([f"robe{probe_letter}" in p.name for p in probe_noise_paths]):
+                        break
+                    if not any([f"robe{probe_letter}" in p.name for p in unit_metrics_paths]):
+                        break
+                else:
+                    return True
+        return False
     
     # - ------------------------------------------------------------------------------------ #
     
@@ -1093,6 +1157,10 @@ class Files(PlatformJson):
         return [self.entry_from_dict(entry) for entry in self.dict_expected.items()]
     
     @property
+    def entries_expected_dict(self) -> dict[str,Entry]:
+        return {entry[0] : self.entry_from_dict(entry) for entry in self.dict_expected.items()}
+    
+    @property
     def entries_missing(self) -> List[Entry]:
         if self.entries_corrected:
             return [e for e in self.entries_expected if e not in self.entries_corrected or not e.correct_data]
@@ -1214,22 +1282,22 @@ class Files(PlatformJson):
             json.dump(dict(contents), f, indent=4)
         print(f"updated {self.path.name}")
 
-    def push_from_npexp(self):
-        if NPEXP_PATH not in self.path.parents:
-            raise ValueError("platform json should be on np-exp first")
+    def push_from_here(self):
+        "Write a for lims upload trigger file that points to the platform json's parent folder."
         if len(list(self.path.parent.glob("*_platform*.json"))) > 1:
             raise ValueError("session folder contains multiple platform jsons: lims will ingest data specified in all of them once triggered - ensure they're correct")
 
         # write a trigger file to incoming/trigger --------------------------------------------- #
         with open(INCOMING_ROOT / 'trigger' / f"{self.session.id}.ecp", 'w') as f:
             f.writelines('sessionid: ' + self.session.id + "\n")
-            f.writelines("location: '" + self.session.npexp_path.as_posix() + "'")
+            f.writelines("location: '" + self.path.parent.as_posix() + "'")
+        print(f"Trigger file written for {self.path.name}")
     
     
     @property
     def dict_expected_d2(self) -> dict:  
         platform_files = {}
-        for probe_letter in "ABCDEF":
+        for probe_letter in self.probe_letters_inserted:
             probe_folder = f'{self.session.folder}_probe{probe_letter}_sorted'
             probe_key = f"ephys_raw_data_probe_{probe_letter}_sorted"
         
@@ -1265,9 +1333,177 @@ class Files(PlatformJson):
         contents['files'] = {**contents['files'], **self.dict_expected_d2}
         with self.path.open('w') as f:
             json.dump(dict(contents), f, indent=4)
-        print(f"updated {self.path.name}")
+        print(f"updated {self.path.name} with `files`")
+    
+    def make_d2(self):
+        "Update `files` list in platformD1 to upload only sorted data from D2."
+        self.update(files=dict(),project=self.experiment)
+        if self.foraging_id:
+            self.update(foraging_id=self.foraging_id)
+        self.add_d2()
         
+    def add_missing_d1_files(self):
+        to_upload = {}
+        missing = self.missing_from_lims_ready_on_npexp()
         
+        for k,v in self.dict_expected.items():
+            filename = f"{tuple(v.values())[0]}"
+            if filename in missing:
+                print(f"{filename} is missing from LIMS")
+                to_upload[k] = v
+                
+        contents = self.contents # must copy contents to avoid breaking class property (Which pulls from .json)
+        contents['files'] = {**contents['files'], **to_upload}
+        with self.path.open('w') as f:
+            json.dump(dict(contents), f, indent=4)
+        print(f"updated {self.path.name} with `files`")
+                
+    def upload_missing_d1_only(self, override_missing_data=False):
+        if not self.correct_data and not override_missing_data:
+            print(f"{self.session.folder} not all correct data present - try running `obj.fix()` or add kwarg `override_missing_data=True`")
+            return
+        if not hasattr(self, 'd1_df'):
+            self.make_summary_dataframes()
+        if self.d1_df.loc['ALL', 'on lims'] == True:
+            print(f"{self.session.folder} already has all files on LIMS")
+            return
+        self.update(files=dict(),project=self.experiment)
+        if self.foraging_id:
+            self.update(foraging_id=self.foraging_id)
+        self.add_missing_d1_files()
+        self.ensure_single_platform_json()
+        self.push_from_here()
+        
+    @property
+    def dict_expected_d0(self) -> dict:  
+        entries: list[str] = EphysRaw.lims_upload_labels
+        return {k:v for k,v in self.dict_expected.items() if k in entries}
+                
+    @property
+    def dict_folder_d0(self) -> dict:
+        """Return dict_expected for entries actually in the same folder as the json"""
+        dict_folder = {}
+        for k,v in self.dict_expected_d0.items():
+            if (self.path.parent / v['directory_name']).exists():
+                # add probe entry to files dict
+                dict_folder.update({k:v})
+                
+        return dict_folder
+    
+    def add_d0(self):
+        if self.dict_expected_d0 != self.dict_folder_d0:
+            print("not all sorted probe folders are present - aborting D0 platform json update")
+            return
+        contents = self.contents # must copy contents to avoid breaking class property (Which pulls from .json)
+        contents['files'] = {**contents['files'], **self.dict_expected_d0}
+        with self.path.open('w') as f:
+            json.dump(dict(contents), f, indent=4)
+        print(f"updated {self.path.name} with `files`")
+        
+    def make_d0_manifest(self):
+        "Update `files` list in platformD1 to upload only raw data."
+        self.update(files=dict(),project=self.experiment)
+        if self.foraging_id:
+            self.update(foraging_id=self.foraging_id)
+        self.add_d0()
+        
+    def validate_d0(self):
+        "temp - move to Entry"
+        dir_sizes_gb = [
+            round(dir_size(self.path.parent / v['directory_name']) / 1024**3) 
+            for v in self.dict_expected_d0.values()
+            ]
+        if not all(gb > 300 for gb in dir_sizes_gb):
+            print(f"not all raw data folders are > 300GB")
+            return False
+        diffs = [abs(dir_sizes_gb[0] - size) for size in dir_sizes_gb]
+        if not all(diff <= 2 for diff in diffs):
+            print(f"raw data folders are not all the same size")
+            return False
+        return True
+            
+    def upload_d0_only(self):
+        if not hasattr(self, 'd1_df'):
+            self.make_summary_dataframes()
+        if self.d1_df.loc['ALL', 'on lims'] == True:
+            print(f"{self.session.folder} already has all files on LIMS")
+            return
+        if not self.validate_d0():
+            print(f"{self.session.folder} D0 upload aborted")
+            return
+        self.make_d0_manifest()
+        self.ensure_single_platform_json()
+        self.push_from_here()
+        
+    def ensure_single_platform_json(self):
+        """Ensure there is only one platform json in the session folder"""
+        if len(jsons := list(self.path.parent.glob("*_platform*.json"))) > 1:
+            for json in jsons:
+                if json != self.path:
+                    json.replace(json.with_suffix(".json.bak"))
+                    print(f"renamed {json.name}")
+                    
+    def make_summary_dataframes(self, fast:bool=False):
+        print(f"making summary dataframes for {self.session.folder}")
+        # make d1 df --------------------------------------------------------------------------- #
+        d1_df = pd.DataFrame(
+        data = [ 
+                (
+                e.suffix, 
+                # e.origin is not None and e.origin.exists(), #! skip for speed
+                e.npexp.exists(),
+                e.lims is not None,
+                ) 
+                for e 
+                in self.entries_expected],
+        columns=[
+                self.session.folder,
+                # 'at origin', #! skip for speed
+                'on npexp',
+                'on lims',
+                ],
+        )
+        d1_df.loc['SUM'] = d1_df.sum()
+        d1_df.loc['SUM',self.session.folder] = 'SUM'
+        d1_df.loc['ALL'] = d1_df.all()
+        d1_df.loc['ALL',self.session.folder] = 'ALL'
+
+        d1_df.set_index(self.session.folder, inplace=True)
+
+        # make d2 df --------------------------------------------------------------------------- #
+        d2_df = pd.DataFrame(
+        data=[
+                (
+                e.suffix, 
+                e.npexp.exists(),
+                e.lims is not None,
+                ) 
+                for e 
+                in self.entries_d2],
+        columns=[
+                self.session.folder,
+                'on npexp',
+                'on lims',
+                ],
+        )
+        d2_df.loc['SUM'] = d2_df.sum()
+        d2_df.loc['SUM',self.session.folder] = 'SUM'
+        d2_df.loc['ALL'] = d2_df.all()
+        d2_df.loc['ALL',self.session.folder] = 'ALL'
+
+        d2_df.set_index(self.session.folder, inplace=True)
+        self.d1_df = d1_df
+        self.d2_df = d2_df
+        
+    def missing_from_lims_ready_on_npexp(self) -> list[str]:
+        if not hasattr(self, 'd1_df'):
+            print("Summary dataframes haven't been made yet - run `make_summary_dataframes` first")
+        missing = list(self.d1_df.loc[(self.d1_df['on npexp'] == True) & (self.d1_df['on lims'] == False)].index)
+        missing.remove('ALL') if 'ALL' in missing else None
+        missing.remove('SUM') if 'SUM' in missing else None
+        missing = [self.session.folder + m for m in missing]
+        return missing
+
 # class D2(Files):
     # """ This doesn't really make sense - we don't need to open a platform D1 json to
     # make this. But if we have the sorted data ready to go, we can push to lims from here"""
@@ -1329,21 +1565,23 @@ def return_single_hit(hits:List[pathlib.Path]) -> pathlib.Path:
         else:
             return largest
 
+def dir_size(dir:Union[str, pathlib.Path]) -> int:
+    """Returns the size of a directory in bytes"""    
+    if not dir.is_dir():
+        raise ValueError(f"Not a directory: {dir}")
+    return sum(f.stat().st_size for f in pathlib.Path(dir).rglob('*') if f.is_file())
+
 def get_largest_dir(dirs:List[pathlib.Path]) -> Union[None,pathlib.Path]:
     """Return the largest directory from a list of directories, or None if all are the same size"""
-    
-    if not all(d.is_dir() for d in dirs):
-        raise ValueError(f"Not all entries are directories: {dirs}")
     if len(dirs) == 1:
         return dirs[0]
             
-    dir_size = []
-    for idx, dir in enumerate(dirs):
-        dir_size.append(sum(f.stat().st_size for f in pathlib.Path(dir).rglob('*') if pathlib.Path(f).is_file()))
+    dir_sizes = [dir_size(dir) for dir in dirs]
     
-    if all(s == dir_size[0] for s in dir_size):
+    if all(sizes == dir_sizes[0] for sizes in dir_sizes):
         return None
-    max_size_idx = dir_size.index(max(dir_size))    
+    
+    max_size_idx = dir_sizes.index(max(dir_sizes))    
     return dirs[max_size_idx]
 
 def contains_foraging_id(string: str) -> Union[str, None]:

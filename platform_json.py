@@ -1,14 +1,14 @@
+import dataclasses
 import datetime
 import hashlib
 import json
-import logging
 import os
 import pathlib
-import pprint
 import re
 import shutil
+import time
 import warnings
-from typing import Dict, List, Tuple, Union
+from typing import Dict, List, Sequence, Tuple, Union
 
 import pandas as pd
 
@@ -114,7 +114,9 @@ class PlatformJson(SessionFile):
                 raise TypeError(f"{self.__class__} path must be a path ending in .json")
         else:
             raise ValueError(f"{self.__class__} requires a path to a json file")
+        
         super().__init__(self.path)
+            
 
     @property
     def backup(self) -> pathlib.Path:
@@ -402,7 +404,7 @@ class Entry:
         self.descriptive_name = d = entry[0] if isinstance(entry, tuple) else list(entry.keys())[0]
         self.dir_or_file_type: str = list(entry[1].keys())[0] if isinstance(entry, tuple) else list(entry[d].keys())[0]
         self.dir_or_file_name: str = list(entry[1].values())[0] if isinstance(entry, tuple) else list(entry[d].values())[0]
-        
+                
         # we'll need some general info about the experiment:
         self.platform_json: PlatformJson = Files(platform_json.path) if not isinstance(platform_json, Files) else platform_json
         
@@ -611,6 +613,10 @@ class EphysSorted(Entry):
                 glob = list(lims.glob(f'*/*_probe{self.probe_letter}'))
                 self._lims = glob[0] if glob else None
         return self._lims
+    
+    # def copy(self, *args, **kwargs):
+    #     for f:
+    #         super().copy(*args, **kwargs)
 
 class EphysRaw(Entry):
     
@@ -963,7 +969,6 @@ class Surgery(Entry):
             self.expected_data.touch()
 # -------------------------------------------------------------------------------------- #
     
- 
 class Files(PlatformJson):
     """
         A subclass with more-specific methods for fixing the files manifest part of the

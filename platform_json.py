@@ -42,6 +42,56 @@ NPEXP_PATH = pathlib.Path("//allen/programs/mindscope/workgroups/np-exp")
 INCOMING_ROOT = pathlib.Path("//allen/programs/braintv/production/incoming/neuralcoding")
 
 
+@dataclasses.dataclass
+class D2Checklist:
+    "Has properties that should all evaluate to True for a D2 session to be ready for upload. `None` means not-yet-checked."
+    
+    session:str = dataclasses.field(repr=True, compare=True, hash=True)
+    ready:bool = dataclasses.field(default=False, repr=True, init=False)
+    
+    inserted_probes_checked:bool|None = dataclasses.field(default=None, repr=False)
+    "Confirmed by visual inspection of the post-insertion image."
+    files_exist:bool|None = dataclasses.field(default=None,repr=False)
+    "..in np-exp folder. Only for inserted probes."
+    files_validated:bool|None = dataclasses.field(default=None,repr=False)
+    "..using CB's QC funcs. Only for inserted probes."
+    qc_finished:bool|None = dataclasses.field(default=None,repr=False)
+    "Only for inserted probes."
+    extra_files_removed:bool|None = dataclasses.field(default=None,repr=False)
+    "..from np-exp. For all probes."
+    platform_json_updated:bool|None = dataclasses.field(default=None,repr=False)
+    "..with inserted probes, on np-exp."
+    other_platform_jsons_renamed:bool|None = dataclasses.field(default=None,repr=False)
+    "..so that their `files` contents aren't uploaded prematurely."
+    
+    @property # type: ignore[error]
+    def ready(self) -> bool:
+        "..for trigger file to be written."
+        return all(self.__dict__.values())
+    
+    @ready.setter
+    def ready(self, dummy_var):
+        "Note: has to exist for dataclass field to be usable."
+        dummy_var
+    
+    @property
+    def triggered(self) -> bool:
+        "Trigger file has been written to start upload to lims."
+        if not hasattr(self, '_triggered'):
+            self._triggered = False
+        return self._triggered
+    
+    @triggered.setter
+    def triggered(self, value:bool):
+        "Can only be set True once, then cannot be un-set."
+        if hasattr(self, '_triggered') and self._triggered:
+            print(f"Trigger file has already been written for {self.session}.")
+            return
+        if not isinstance(value, bool):
+            raise TypeError(f"`triggered` must be a bool, not {type(value)}")
+        self._triggered = value
+
+
 class PlatformJson(SessionFile):
     
     class IncompleteInfoFromPlatformJson(Exception):

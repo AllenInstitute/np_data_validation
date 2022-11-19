@@ -1,0 +1,3 @@
+[submodule "NP_pipeline_QC"]
+	path = NP_pipeline_QC
+	url = https://github.com/bjhardcastle/NP_pipeline_QC

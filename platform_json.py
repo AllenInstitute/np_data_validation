@@ -17,14 +17,15 @@ import mtrain
 import nptk
 import strategies
 from data_validation import *
+
 # -------------------------------------------------------------------------------------- #
-STAGING = True 
+STAGING = False 
 # don't actually copy or modify anything - instead, create a 'virtual' session folder
 # using symlinks to the actual data - ONLY APPLIES TO 'Files' CLASS
 STAGING_ROOT = pathlib.Path("//allen/programs/mindscope/workgroups/dynamicrouting/ben/staging")
-warnings.warn(f"Staging mode is ON. No files will be copied or modified.\nA virtual session folder will be created at {STAGING_ROOT}") if STAGING else None
+if STAGING:
+    warnings.warn(f"Staging mode is ON. No files will be copied or modified.\nA virtual session folder will be created at {STAGING_ROOT}") if STAGING else None
 # -------------------------------------------------------------------------------------- #
-
 
 TEMPLATES_ROOT = pathlib.Path("//allen/programs/mindscope/workgroups/dynamicrouting/ben/npexp_data_manifests")
 

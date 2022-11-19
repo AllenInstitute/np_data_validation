@@ -112,7 +112,7 @@ def move_session_folders_to_npexp():
         "exhaustive_search", fallback=False
     )
     logging.getLogger().setLevel(
-        config["options"].get("logging_level", fallback="INFO")
+        config["options"].get("logging_level", fallback="INFO").upper()
     )
 
 

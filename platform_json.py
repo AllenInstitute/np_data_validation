@@ -41,6 +41,11 @@ NPEXP_PATH = pathlib.Path("//allen/programs/mindscope/workgroups/np-exp")
 
 INCOMING_ROOT = pathlib.Path("//allen/programs/braintv/production/incoming/neuralcoding")
 
+QC_PATHS = (
+    pathlib.Path("//allen/programs/braintv/workgroups/nc-ophys/corbettb/NP_behavior_pipeline/QC"),
+    pathlib.Path("//allen/programs/mindscope/workgroups/openscope/GLO_QC"),
+    pathlib.Path("//allen/programs/mindscope/workgroups/openscope/Illusion_QC"),
+)
 
 @dataclasses.dataclass
 class D2Checklist:

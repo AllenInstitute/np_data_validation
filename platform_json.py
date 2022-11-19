@@ -1094,10 +1094,10 @@ class Files(PlatformJson):
         or any(h in self.contents.get('workflow','') for h in ['hab','habituation'])
         ):
             session_type = 'habituation'
-        elif 'D1' in self.path.stem:
-            session_type = 'D1'
         elif 'D2' in self.path.stem:
             session_type = 'D2'
+        else:
+            session_type = 'D1'
         template_path = TEMPLATES_ROOT / session_type / f"{self.experiment}.json"
         if not template_path.exists():
             raise self.PlatformJsonFilesTemplateNotFoundError(f"File manifest template not found for {self.experiment}")

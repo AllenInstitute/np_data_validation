@@ -3506,7 +3506,7 @@ def DVFolders_from_dirs(
     dirs: Union[str, Sequence[str], Sequence[pathlib.Path]], only_session_folders=True
 ) -> Generator[DataValidationFolder, None, None]:
     """Generator of DataValidationFolder objects from a list of directories"""
-    if isinstance(dirs, str|pathlib.Path):
+    if isinstance(dirs, (str,pathlib.Path)):
         dirs = (dirs)
 
     def skip(dir) -> bool:

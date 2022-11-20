@@ -3093,6 +3093,10 @@ class DataValidationFolder:
 
     # - applied to glob search for files in the folder
 
+    skip_sorting_check: bool = False
+    # - by default, raw data won't be deleted from acq A/B drives if sorting hasn't
+    #   produced some folders with the same probe letters on npexp
+
     def __init__(self, path: Union[str, pathlib.Path]):
 
         # extract the session ID from anywhere in the path (not reqd)
@@ -3209,6 +3213,32 @@ class DataValidationFolder:
             ]
         return self._file_paths
     
+    @property
+    def probes_in_foldername(self) -> str:
+        probe_pattern = "(?<=_probe)([A-F]{1,})"
+        if probes := re.search(probe_pattern, self.path.name):
+            return probes.group(0)
+        return ''
+        
+    @property
+    def is_original_raw_data(self) -> bool:
+        original = self.path.drive == 'A:' or self.path.drive == 'B:'
+        return original and len(self.probes_in_foldername) >= 3
+    
+    @functools.cached_property
+    def sorted_probe_dirs_on_npexp(self) -> bool:
+        probe_pattern = "(?<=_probe)([A-F])(?=_sorted)"
+        sorted = ''
+        for dir in self.session.npexp_path.iterdir():
+            if probe := re.search(probe_pattern, dir.name):
+                sorted += probe.group(0)
+        return sorted
+
+    @property
+    def raw_data_with_no_sorted_on_npexp(self) -> bool:
+        return self.is_original_raw_data and not any(
+            probe in self.sorted_probe_dirs_on_npexp for probe in self.probes_in_foldername)
+            
     def copy_to_npexp(self):
         """Copy all files to the NP-EXP folder"""
         # create threads for each file
@@ -3273,14 +3303,20 @@ class DataValidationFolder:
 
     def clear(self) -> List[int]:
         """Clear the folder of files which are backed-up on LIMS or np-exp, or any added backup paths"""
-
+        
+        if not self.skip_sorting_check and self.raw_data_with_no_sorted_on_npexp:
+            logging.warning(
+                f"Skipped clearing of original raw probe data on Acq: no sorted folders on npexp yet for {self.session.folder}."
+            )
+            return [0]
+        
         def delete_if_valid_backup_in_db(result, idx, file_inst, db, backup_paths):
 
             files_bytes = strategies.delete_if_valid_backup_in_db(
                 file_inst, db, backup_paths
             )
             result[idx] = files_bytes
-
+            
         print("- searching for valid backups...")
         deleted_bytes = [0] * len(self.file_paths)  # keep a tally of space recovered
         threads = [None] * len(

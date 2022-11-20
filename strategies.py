@@ -196,30 +196,6 @@ def delete_if_valid_backup_in_db(
                 f"Not a valid backup, something has gone wrong: {subject}"
             )
 
-        # currently, we don't want to delete raw data on A/B drives before the sorted data make it to npexp
-        if (
-            (
-                subject.path.as_posix().startswith("A:")
-                or subject.path.as_posix().startswith("B:")
-            )
-            and subject.probe_dir
-            and subject.probe_dir in ["ABC", "DEF"]
-            and not (
-                (
-                    subject.session.npexp_path
-                    and any(s for s in subject.session.npexp_path.glob("*_sorted*"))
-                )
-                or (
-                    subject.session.lims_path
-                    and any(s for s in subject.session.lims_path.glob("*_sorted*"))
-                )
-            )
-        ):
-            dv.logging.debug(
-                f"{subject} Skipped deletion of raw probe data on Acq: no sorted folders on npexp or lims yet "
-            )
-            return 0
-
         try:
             subject.path.unlink()
             dv.logging.info(f"DELETED {subject}")

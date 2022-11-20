@@ -3360,7 +3360,7 @@ class DataValidationFolder:
         if self.include_subfolders:
             check_dir_paths = os.walk(self.path, topdown=False, followlinks=False)
         else:
-            check_dir_paths = [d for d in path.iterdir() if d.is_dir()]
+            check_dir_paths = [d for d in self.path.iterdir() if d.is_dir()]
             
         for check_dir in check_dir_paths:
             check_dir = (

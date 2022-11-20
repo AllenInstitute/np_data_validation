@@ -122,7 +122,7 @@ import tempfile
 import threading
 import traceback
 import zlib
-from typing import Any, Callable, Generator, List, Literal, Set, Tuple, Union
+from typing import Any, Callable, Container, Generator, List, Literal, Sequence, Set, Tuple, Union
 
 try:
     import pymongo
@@ -3499,11 +3499,11 @@ def report_multline_print(
 
 
 def DVFolders_from_dirs(
-    dirs: Union[str, List[str], List[pathlib.Path]], only_session_folders=True
+    dirs: Union[str, Sequence[str], Sequence[pathlib.Path]], only_session_folders=True
 ) -> Generator[DataValidationFolder, None, None]:
     """Generator of DataValidationFolder objects from a list of directories"""
-    if not isinstance(dirs, list):
-        dirs = [dirs]
+    if isinstance(dirs, str|pathlib.Path):
+        dirs = (dirs)
 
     def skip(dir) -> bool:
         mice = [

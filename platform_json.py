@@ -1328,6 +1328,24 @@ class Files(PlatformJson):
         return dict_folder
     
     @property
+    def triggered(self) -> tuple[int]:
+        file = self.path.parent / '.triggered'
+        if not file.exists():
+            return ()
+        with file.open('r') as f:
+            return tuple(int(i) for i in f.readlines())
+        
+    @triggered.setter
+    def triggered(self, value: int|tuple[int]):
+        if isinstance(value, int):
+            value = (value,)
+        previous = self.triggered
+        file = self.path.parent / '.triggered'
+        file.touch()
+        with file.open('w') as f:
+            f.writelines(str(i) + '\n' for i in {*value,*previous})
+        
+    @property
     def entries_d2(self) -> list:
         return [self.entry_from_dict({k:v}) for k,v in self.dict_expected_d2.items()]
     
@@ -1365,6 +1383,9 @@ class Files(PlatformJson):
         print(f"updated {self.path.name} with `files`")
                 
     def upload_missing_d1_only(self, override_missing_data=False):
+        if 1 in self.triggered:
+            print(f"{self.path.parent} already triggered for D1 upload")
+            return
         if not self.correct_data and not override_missing_data:
             print(f"{self.session.folder} not all correct data present - try running `obj.fix()` or add kwarg `override_missing_data=True`")
             return
@@ -1429,6 +1450,9 @@ class Files(PlatformJson):
         return True
             
     def upload_d0_only(self):
+        if 0 in self.triggered:
+            print(f"{self.path.parent} already triggered for D0 upload")
+            return
         if not hasattr(self, 'd1_df'):
             self.make_summary_dataframes()
         if self.d1_df.loc['ALL', 'on lims'] == True:

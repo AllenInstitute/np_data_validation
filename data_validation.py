@@ -3222,11 +3222,15 @@ class DataValidationFolder:
         
     @property
     def is_original_raw_data(self) -> bool:
+        if not self.session:
+            return False
         original = self.path.drive == 'A:' or self.path.drive == 'B:'
         return original and len(self.probes_in_foldername) >= 3
     
     @functools.cached_property
     def sorted_probe_dirs_on_npexp(self) -> bool:
+        if not self.session:
+            return False
         probe_pattern = "(?<=_probe)([A-F])(?=_sorted)"
         sorted = ''
         for dir in self.session.npexp_path.iterdir():

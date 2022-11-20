@@ -49,8 +49,9 @@ def main():
         
         try:
             subprocess.run(cmd, check=True)
-        except subprocess.CalledProcessError:
-            continue
+        except subprocess.CalledProcessError as e:
+            if e.returncode >= 8:
+                continue
         
         sessions.add(folder.session)
         

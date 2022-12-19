@@ -8,9 +8,10 @@ import re
 import shutil
 import time
 import warnings
-from typing import Dict, List, Sequence, Tuple, Union
+from typing import Dict, List, Sequence, Tuple, Union, Optional
 
 import pandas as pd
+import PIL
 
 import data_getters as dg
 import mtrain
@@ -161,7 +162,7 @@ class PlatformJson(SessionFile):
     @property
     def exp_start(self) -> datetime.datetime:
         """Start time of experiment - not relevant for D2 files"""
-        fields_to_try = ['ExperimentStartTime','ProbeInsertionStartTime','workflow_start_time']
+        fields_to_try = ['workflow_start_time','CartridgeLowerTime','ExperimentStartTime','ProbeInsertionStartTime',]
         start_time = ''
         while fields_to_try:
             start_time = self.contents.get(fields_to_try.pop(0), '')
@@ -179,7 +180,7 @@ class PlatformJson(SessionFile):
         # try to get workflow end time from platform json
         # fields in order of preference for estimating exp end time (for recovering
         # files created during exp based on timestamp)
-        fields_to_try = ['ExperimentCompleteTime','workflow_complete_time','json_save_time','platform_json_save_time']
+        fields_to_try = ['platform_json_save_time','workflow_complete_time','ExperimentCompleteTime']
         end_time = ''
         while fields_to_try and end_time == '':
             end_time = self.contents.get(fields_to_try.pop(0), '')
@@ -201,6 +202,22 @@ class PlatformJson(SessionFile):
         if self.session.mouse in pretest_mice.keys():
             return f"Pretest{pretest_mice[self.session.mouse]}" 
         return self.contents.get('experiment', self.session.project)
+    
+    @property
+    def session_type(self) -> Literal['habituation', 'D1', 'D2']:
+        if (
+            any(h in self.contents.get('stimulus_name','') for h in ['hab','habituation'])
+        or any(h in self.contents.get('workflow','') for h in ['hab','habituation'])
+        ):
+            return 'habituation'
+        elif 'D2' in self.path.stem:
+            return 'D2'
+        else:
+            return 'D1'
+
+    @property
+    def is_ecephys_session(self) -> bool:
+        return self.session_type == 'D1'
     
     @property
     def probe_letters_inserted(self) -> List[str]:
@@ -265,7 +282,7 @@ class PlatformJson(SessionFile):
     # to use.
     
     @property
-    def foraging_id_contents(self) -> str:
+    def foraging_id_from_contents(self) -> Optional[str]:
         """Foraging ID currently in the platform json. May be in the 'foraging_id' field
         or 'foraging_id_list'.
         
@@ -320,7 +337,7 @@ class PlatformJson(SessionFile):
     def foraging_id(self):
         """Final foraging ID to use in platform json - currently using ID from 
         behavior session in lims if available, then mtrain, platform json itself"""
-        return self.foraging_id_lims or self.foraging_id_mtrain or self.foraging_id_pkl or self.foraging_id_contents
+        return self.foraging_id_lims or self.foraging_id_mtrain or self.foraging_id_pkl or self.foraging_id_from_contents
     
     @property
     def has_qc(self) -> bool:
@@ -427,6 +444,12 @@ class Entry:
      
     def __str__(self):
         return self.dir_or_file_name
+    
+    def __repr__(self):
+        return f"{self.__class__.__name__}({self.__dict__()})"
+    
+    def __hash__(self):
+        return hash(str(self.__dict__()))
     
     @property
     def suffix(self) -> str:
@@ -858,7 +881,19 @@ class SurfaceImage(Entry):
         assert hasattr(self,'descriptive_name')
         self.source = self.platform_json.src_image
         self.side = self.descriptive_name.split('_')[-1]
-    
+        
+    def copy(self, *args, **kwargs):
+        super().copy(*args, **kwargs)
+        dest = args[0] or kwargs.get('dest',None) or self.expected_data
+        
+        def compress_image(src:pathlib.Path, dest:pathlib.Path):
+            im = PIL.Image.open(src)
+            im.save(dest, format='JPEG', bitmap_format= 'JPEG', quality=50)
+            print(f"converted {src} ({src.stat().st_size//1024**2} MB) to {dest.name} ({dest.stat().st_size//1024**2} MB)")
+        
+        if (img := pathlib.Path(dest)).stat().st_size > 2*1024**2:
+            compress_image(img, img)
+            
     @property
     def total_imgs_per_exp(self):
         return sum('_surface_image_' in descriptive_name for descriptive_name in self.platform_json.dict_template.keys())
@@ -868,7 +903,7 @@ class SurfaceImage(Entry):
         if not self.total_imgs_per_exp:
             print(f"Num. total images needs to be assigned")
             return None
-        glob = f"*{self.expected_data.suffix}"
+        glob = f"*"
         hits = get_files_created_between(self.source,glob,self.platform_json.exp_start,self.platform_json.exp_end)
         
         if len(hits) == 0:
@@ -895,7 +930,7 @@ class SurfaceImage(Entry):
             # regardless of which self.side this entry is, we have no choice but to
             # return the image that we have (relabeled inaccurately as the other side in half the cases)
             return hits[img_idx]
-        print(f"{self.total_imgs_per_exp} images found - can't determine which is {self.dir_or_file_name}")
+        print(f"{len(hits)} images found - can't determine which is {self.dir_or_file_name}")
         
 # --------------------------------------------------------------------------------------
 class NewscaleLog(Entry):
@@ -1094,16 +1129,7 @@ class Files(PlatformJson):
     
     @property
     def dict_template(self) -> dict: 
-        if (
-            any(h in self.contents.get('stimulus_name','') for h in ['hab','habituation'])
-        or any(h in self.contents.get('workflow','') for h in ['hab','habituation'])
-        ):
-            session_type = 'habituation'
-        elif 'D2' in self.path.stem:
-            session_type = 'D2'
-        else:
-            session_type = 'D1'
-        template_path = TEMPLATES_ROOT / session_type / f"{self.experiment}.json"
+        template_path = TEMPLATES_ROOT / self.session_type / f"{self.experiment}.json"
         if not template_path.exists():
             raise self.PlatformJsonFilesTemplateNotFoundError(f"File manifest template not found for {self.experiment}")
         with template_path.open('r') as f:

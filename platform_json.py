@@ -776,29 +776,41 @@ class Camstim(Entry):
         
         # visual ----------------------------------------------------------------------------- #
         if self.descriptive_label == 'visual':
-        
+            
+            def exclude_other_labels(matches: Sequence[pathlib.Path]) -> list[pathlib.Path]:
+                other_labels = (
+                    set(self.descriptive_labels + list(self.pkl_file_label_descriptive_label_map))
+                    - set((self.descriptive_label,self.pkl_file_label))
+                )
+                return [m for m in matches if not any(s in m.name for s in other_labels)]
+            
             # When all processing completes, camstim Agent class passes data and uuid to
             # /camstim/lims BehaviorSession class, and write_behavior_data() writes a
             # final .pkl with default name YYYYMMDDSSSS_mouseID_foragingID.pkl
             # - if we have a foraging ID, we can search for that
             foraging_pkl = None
             #* this is our preferred visual pkl
-            if self.platform_json.foraging_id:
-                matches = list(self.source.glob(f"*{self.platform_json.foraging_id}*.pkl"))
+            if foraging_id := self.platform_json.foraging_id:
+                matches = list(self.source.glob(f"*{foraging_id}*.pkl"))
+                matches = exclude_other_labels(matches)
                 if foraging_pkl := return_single_hit(matches):
                     return foraging_pkl
                     
             # if no foraging ID is found from lims (behavior session can be recorded
-            # with no date_of_acquisition, which makes it difficult to locate), there may be a pkl with a foraging ID that matches the
-            # foraging_id in the platform json 
-            if foraging_pkl := return_single_hit(list(self.source.glob(f"*{self.platform_json.foraging_id_contents}*.pkl"))):
-                return foraging_pkl
+            # with no date_of_acquisition, which makes it tricky to locate), there may be a foraging_id in the platform json
+            # and a pkl with that foraging ID might exist
+            if foraging_id := self.platform_json.foraging_id_from_contents:
+                matches = list(self.source.glob(f"*{foraging_id}*.pkl"))
+                matches = exclude_other_labels(matches)
+                if foraging_pkl := return_single_hit(matches):
+                    return foraging_pkl
             
             # otherwise, we can search for any pkl created during the timeframe of the experiment
             # and check whether it has a foraging ID in its name
             glob = ("*.pkl")
             matches = get_files_created_between(self.source,glob,self.platform_json.exp_start,self.platform_json.exp_end)
-            if foraging_pkls:= [pkl for pkl in matches if contains_foraging_id(pkl.name)]:
+            matches = exclude_other_labels(matches)
+            if foraging_pkls := [pkl for pkl in matches if contains_foraging_id(pkl.name)]:
                 return return_single_hit(foraging_pkls)
             
             mtrain_stage_pkl = None
@@ -809,6 +821,7 @@ class Camstim(Entry):
                 glob = f"*{mtrain_stage}*.pkl"
                 matches = get_files_created_between(self.source,glob,self.platform_json.exp_start,self.platform_json.exp_end)
                 if matches:
+                    matches = exclude_other_labels(matches)
                     mtrain_stage_pkl = return_single_hit(matches)
             if mtrain_stage_pkl:
                 return mtrain_stage_pkl
@@ -818,8 +831,7 @@ class Camstim(Entry):
             
         # optogenetic, behavior, replay ---------------------------------------------------------- #
         glob = f"*{self.pkl_file_label}*.pkl"
-        hits += get_files_created_between(self.source,glob,self.platform_json.exp_start,self.platform_json.exp_end)
-            
+        hits += get_files_created_between(self.source,glob,self.platform_json.exp_start,self.platform_json.exp_end)   
         # if len(hits) == 0:
         #     print(f"No matching {self.pkl_file_label}.pkl found")
         

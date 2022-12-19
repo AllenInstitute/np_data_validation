@@ -1482,7 +1482,7 @@ class Files(PlatformJson):
                 e.suffix, 
                 # e.origin is not None and e.origin.exists(), #! skip for speed
                 e.npexp.exists(),
-                e.lims is not None,
+                e.lims.exists() if e.lims else False,
                 ) 
                 for e 
                 in self.entries_expected],
@@ -1506,7 +1506,7 @@ class Files(PlatformJson):
                 (
                 e.suffix, 
                 e.npexp.exists(),
-                e.lims is not None,
+                e.lims.exists() if e.lims else 0,
                 ) 
                 for e 
                 in self.entries_d2],
@@ -1656,6 +1656,52 @@ def find_platform_json(session:Union[int,str]) -> pathlib.Path:
                 break
     return json_path 
 
+def summary_df(platform_jsons:Sequence[PlatformJson], hide_completed_uploads=True) -> pd.DataFrame:
+        
+    df = {}
+
+    df = pd.DataFrame(
+        columns = [
+                'session',
+                'D1 npexp count',
+                'All D1 on npexp',
+                'D1 lims count',
+                'All D1 on lims',
+                'D2 npexp count',
+                'All D2 on npexp',
+                'D2 lims count',
+                'All D2 on lims',
+            ],
+    )
+    df.set_index('session', inplace=True)
+
+    for files in platform_jsons:
+        if not files.path.parent.exists():
+            continue # in case we deleted a bad folder
+        if not hasattr(files, 'd1_df'):
+            files = Files(files.path)
+            files.make_summary_dataframes()
+        session = files.session.folder
+        try:
+            
+            df.loc[session] = [
+                    files.d1_df.loc['SUM','on npexp'],
+                    bool(files.d1_df.loc['ALL','on npexp']),
+                    files.d1_df.loc['SUM','on lims'],
+                    bool(files.d1_df.loc['ALL','on lims']),
+                    files.d2_df.loc['SUM','on npexp'],
+                    bool(files.d2_df.loc['ALL','on npexp']),
+                    files.d2_df.loc['SUM','on lims'],
+                    bool(files.d2_df.loc['ALL','on lims']),
+                ]    
+        except:
+            pass
+        
+    if hide_completed_uploads:
+        return df.loc[(df['All D1 on lims'] == False) | (df['All D2 on lims'] == False)]
+    else:
+        return df
+    
 if __name__=="__main__":
     STAGING = True
     sessionID = "1208667752_637484_20220908"

@@ -6,3 +6,4 @@ pymongo[srv]>=3.0.0
 requests
 certifi
 pandas
+pillow

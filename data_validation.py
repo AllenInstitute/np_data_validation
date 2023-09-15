@@ -122,7 +122,7 @@ import tempfile
 import threading
 import traceback
 import zlib
-from typing import Any, Callable, Container, Generator, List, Literal, Sequence, Set, Tuple, Union
+from typing import Any, Callable, Container, Dict, Generator, List, Literal, Sequence, Set, Tuple, Union
 
 try:
     import pymongo
@@ -399,7 +399,7 @@ class Session:
 
     NPEXP_ROOT = pathlib.Path(r"//allen/programs/mindscope/workgroups/np-exp")
 
-    def __init__(self, path: str):
+    def __init__(self, path: str | pathlib.Path):
         if not isinstance(path, (str, pathlib.Path)):
             raise TypeError(
                 f"{self.__class__.__name__} path must be a string or pathlib.Path object"
@@ -731,6 +731,7 @@ class SessionFile:
         if not matches:
             return None
         return pathlib.Path(sorted(matches)[-1])
+    
     @property
     def z_drive_path(self) -> pathlib.Path:
         """Expected path to a copy on 'z' drive, regardless of whether or not it exists.
@@ -2024,6 +2025,7 @@ class LimsDVDatabase(DataValidationDB):
         path: str = None,
         size: int = None,
         checksum: str = None,
+        match: int = None,
     ) -> List[DataValidationFile]:
         if isinstance(file, DataValidationFile):
             path = file.path
@@ -2196,16 +2198,18 @@ class LimsDVDatabase(DataValidationDB):
         file: Union[str, pathlib.Path, SessionFile]
     ) -> DataValidationFile:
         """Return the hash of a file in LIMS, or None if it doesn't exist."""
+        if not file:
+             return None
         if not isinstance(file, SessionFile):
             try:
                 file = SessionFile(path=file)
             except SessionError:
                 return None
 
-        if not file.lims_backup:
+        if not file.lims_path:
             return None
 
-        lims_file = file.lims_backup
+        lims_file = file.lims_path
         all_hashes = __class__.file_factory_from_ecephys_session(
             lims_file, return_as_dict=True
         )
@@ -2214,8 +2218,8 @@ class LimsDVDatabase(DataValidationDB):
         DVFiles = []
         for lims_file, hashes in all_hashes.items():
             if (
-                lims_file == file.lims_backup.as_posix()
-                or lims_file == file.lims_backup.as_posix()[1:]
+                lims_file == file.lims_path.as_posix()
+                or lims_file == file.lims_path.as_posix()[1:]
             ):
                 for hasher_key, hash_hexdigest in hashes.items():
                     DVFiles.append(
@@ -3550,12 +3554,13 @@ available_DVFiles = {
 lims_available_hashers = {"sha3_256": hashlib.sha3_256, "sha256": hashlib.sha256}
 
 if __name__ == "__main__":
-    f = R"C:\Users\ben.hardcastle\Desktop\New folder (2)\1181283346_625555_20220601\1181283346_625555_20220601.ISIregistration.npz"
-    f = R"\\allen\programs\mindscope\workgroups\np-exp\1182865981_625545_20220608\1182865981_625545_20220608.stim.pkl"
-    f = R"\\allen\programs\mindscope\workgroups\np-exp\1182865981_625545_20220608\1182865981_625545_20220608_surgeryNotes.json"
-    file = SHA256DataValidationFile(f)
-    # f = R"C:\Users\ben.hardcastle\Desktop\New folder (2)\temp_delete_me.ISIregistration.npz"
-    # file = OrphanedDVFile(f)
-    # file = strategies.exchange_if_checksum_in_db(file,MongoDataValidationDB)
-    s = DataValidationStatus(file)
-    s.report()
+    # f = R"C:\Users\ben.hardcastle\Desktop\New folder (2)\1181283346_625555_20220601\1181283346_625555_20220601.ISIregistration.npz"
+    # f = R"\\allen\programs\mindscope\workgroups\np-exp\1182865981_625545_20220608\1182865981_625545_20220608.stim.pkl"
+    # f = R"\\allen\programs\mindscope\workgroups\np-exp\1182865981_625545_20220608\1182865981_625545_20220608_surgeryNotes.json"
+    # file = SHA256DataValidationFile(f)
+    # # f = R"C:\Users\ben.hardcastle\Desktop\New folder (2)\temp_delete_me.ISIregistration.npz"
+    # # file = OrphanedDVFile(f)
+    # # file = strategies.exchange_if_checksum_in_db(file,MongoDataValidationDB)
+    # s = DataValidationStatus(file)
+    # s.report()
+    MongoDataValidationDB.get_matches("//allen/programs/mindscope/workgroups/np-exp/1168990857_366122_20220405/1168990857_366122_20220405_probeDEF/recording_slot3_3.npx2")

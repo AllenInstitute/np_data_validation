@@ -1,4 +1,4 @@
 ECHO off
-CALL conda activate loom
+CALL conda activate dv
 python "check_disks.py"
 cmd \k

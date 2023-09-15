@@ -13,12 +13,12 @@ import data_validation as dv
 log = logging.getLogger(__name__)
 
 # from allensdk/brain_observatory/ecephys/copy_utility/_schemas.py:
-available_hashers = {"sha3_256": hashlib.sha3_256, "sha256": hashlib.sha256}
+lims_available_hashers = {"sha3_256": hashlib.sha3_256, "sha256": hashlib.sha256}
 available_DVFiles = {"sha3_256": dv.SHA3_256DataValidationFile, "sha256": dv.SHA256DataValidationFile}
 
 def hash_type_from_ecephys_upload_input_json(json_path: Union[str, pathlib.Path]) -> str:
     """Read LIMS ECEPHYS_UPLOAD_QUEUE _input.json and return the hashlib class."""
-    with open(json_path) as f:
+    with open(json_path,'r') as f:
         hasher_key = json.load(f).get("hasher_key", None)
     return hasher_key
 
@@ -37,8 +37,8 @@ def hashes_from_ecephys_upload_output_json(
         raise ValueError("path and hashlib class must be provided")
 
     json_path = pathlib.Path(json_path)
-    if not hasher_key in available_hashers.keys():
-        raise ValueError(f"hash_cls must be one of {list(available_hashers.keys())}")
+    if not hasher_key in lims_available_hashers.keys():
+        raise ValueError(f"hash_cls must be one of {list(lims_available_hashers.keys())}")
 
     if not json_path.exists():
         raise FileNotFoundError("path does not exist")
@@ -91,8 +91,9 @@ def upload_jsons_from_ecephys_session_or_file(session_or_file: Union[int, str, p
             lims_dir = session_or_file.session.lims_path  
         elif isinstance(session_or_file,int):
             lims_dir = dv.Session(path=f"{session_or_file}_366122_20220618").lims_path
-        if not lims_dir:
-            return None
+        
+    if not lims_dir:
+        return None
     
     input_and_output_jsons = []
     for upload_input_json in itertools.chain(
@@ -137,6 +138,8 @@ def file_factory_from_ecephys_session(session_or_file: Union[int, str, pathlib.P
     """
 
     input_and_output_jsons = upload_jsons_from_ecephys_session_or_file(session_or_file)
+    if not input_and_output_jsons:
+        return
     
     all_hashes = {}
     for upload_input_json, upload_output_json in input_and_output_jsons:
@@ -262,7 +265,7 @@ def delete_file_if_lims_hash_matches(
 
         # now hash the file in question (just the first time through the loop)
         if file_hash is None or hasher_key != previous_file_hasher_key:
-            file_hash = hash_file(file, available_hashers[hasher_key])
+            file_hash = hash_file(file, lims_available_hashers[hasher_key])
             previous_file_hasher_key = (
                 hasher_key  # store the hash function type for comparison
             )
@@ -311,7 +314,7 @@ def delete_file_if_lims_hash_matches(
         if rehash_lims:
 
             if lims_hash_new is None or hasher_key != previous_lims_rehasher_key:
-                lims_hash_new = hash_file(lims_file, available_hashers[hasher_key])
+                lims_hash_new = hash_file(lims_file, lims_available_hashers[hasher_key])
                 previous_lims_rehasher_key = (
                     hasher_key  # store the hash function type for comparison
                 )
@@ -379,8 +382,12 @@ if __name__ == "__main__":
         print("Filepath to an ecephys session file must be provided")
         sys.exit()
     print("Searching for matching file in LIMS and generating checksum...")
-    deleted = delete_file_if_lims_hash_matches(args.filepath)
-    if deleted == 0:
-        print("No files deleted")
-    else:
-        print(f"1 file deleted: {deleted/1024**3:.1f} Gb recovered")
+    # deleted = delete_file_if_lims_hash_matches(args.filepath)
+    # if deleted == 0:
+    #     print("No files deleted")
+    # else:
+    #     print(f"1 file deleted: {deleted/1024**3:.1f} Gb recovered")
+
+    import pprint
+    pprint.pprint(get_file_with_hash_from_lims(args.filepath))
+    pprint.pprint(upload_jsons_from_ecephys_session_or_file(args.filepath))

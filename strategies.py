@@ -145,8 +145,9 @@ def exchange_if_checksum_in_db(
         return subject
 
     accepted_matches = subject.SELVES
-    matches = db.get_matches(subject, match=accepted_matches)
-
+    matches = db.get_matches(file=subject, match=accepted_matches)
+    matches = [m for m in matches if m]
+ 
     if not matches:
         dv.logging.debug(f"No matches found for {subject.path} in db")
         return subject

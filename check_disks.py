@@ -1,4 +1,6 @@
 import shutil
+from typing import NamedTuple, Tuple, Union
+
 import nptk
 
 """
@@ -6,11 +8,16 @@ A quick overview of free disk space in critical locations on the pipeline rig co
 TODO rewrite using urllib instead of requests + config.py
 """
 
-ALL_COMPS: dict[str,str] = nptk.ConfigHTTP.get_np_computers([0,1])
-DIVIDER_LENGTH = 50
+RIG_NUMBERS = [0,1,2]
+DIVIDER_LENGTH = 30
+INDENT_LENGTH = " "*5
+
+def np_comps() -> dict[str,str]:
+    "{'NP.2-Acq': 'W10DT713844'}"
+    return nptk.ConfigHTTP.get_np_computers(RIG_NUMBERS)
 
 def comp_from_hostname(hostname: str) -> str:
-    for comp, host in ALL_COMPS.items():
+    for comp, host in np_comps().items():
         if host == hostname:
             return comp
     return ""
@@ -25,39 +32,50 @@ class Drive:
         self.comp = comp_from_hostname(hostname)
         self.rig = rig_from_comp(self.comp)
         
-    @property
-    def usage(self):
+        self.usage: Union[str,NamedTuple] = "N/A"
+        "Disk usage stats, or a str explaining why they can't be accessed."
         try:
-            return shutil.disk_usage(f"//{self.hostname}/{self.letter}$")
+            self.usage = shutil.disk_usage(f"//{self.hostname}/{self.letter}$")
         except PermissionError:
-            return None
+            self.usage = "- access denied -"
+        except FileNotFoundError:
+            self.usage = "- drive not found -"
+        
+    def __repr__(self):
+        return f"{self.__class__.__name__}({self.letter!r}, {self.hostname!r})"
     
-    def __print__(self):
-        length = DIVIDER_LENGTH //3
-        indent = " "*5
-        used = '#'
-        free = '-'
-        usage = self.usage
-        if not usage:
-            return '- not available -'
-        print(f"{indent}{self.letter}:")
-        fraction = usage.used / usage.total
-        print(f"{indent}[{used*round(fraction*length)}{free*round((1-fraction)*length)}] {usage.used/1e9:.1f} / {usage.total/1e9:.1f} GB")
+    def __str__(self):
+        if isinstance(self.usage,str):
+            return f"{INDENT_LENGTH}{self.letter}: {self.usage}"
+        if isinstance(self.usage,tuple):
+            letter = f"{self.letter}: "
+            fraction = self.usage.used / self.usage.total
+            used = '#'
+            free = '-'
+            bar_length = DIVIDER_LENGTH // 3
+            fill_bar = f"[{used*round(fraction*bar_length)}{free*round((1-fraction)*bar_length)}]"
+            free_gb = f"{self.usage.used/1e9:.1f} / {self.usage.total/1e9:.1f} GB"
+            return f"{INDENT_LENGTH}{letter} {fill_bar} {free_gb}"
+                
 
 
 if __name__ == "__main__":
     
+    RIG_NUMBERS = [0,1]
+
     first_comp = "Acq"
     
-    for comp,hostname in ALL_COMPS.items():
+    for name, host in np_comps().items():
         
-        if first_comp in comp:
-            print(f"\n{comp.split('-')[0]}\n{'='*DIVIDER_LENGTH}")
+        if first_comp in name:
+            print(f"\n{name.split('-')[0]}\n{'='*DIVIDER_LENGTH}")
             
-        print(f"{comp.split('-')[1]}")
+        print(f"{name.split('-')[1]}")
         
-        if 'acq' in comp.lower():
-            Drive("A", hostname).__print__()
-            Drive("B", hostname).__print__()
-        
-        Drive("C", hostname).__print__()
+        if 'acq' in name.lower():
+            print(Drive("A", host))
+            print(Drive("B", host))
+            print(Drive("C", host))
+            print(Drive("D", host))
+        else:
+            print(Drive("C", host))
